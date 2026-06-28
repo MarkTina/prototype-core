@@ -1,0 +1,20 @@
+{
+  "name": "prototype-core-basic-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vue-tsc -b && vite build"
+  },
+  "dependencies": {
+    "@lucide/vue": "^1.16.0",
+    "@marktowin/prototype-core": "workspace:*",
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.3",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.5",
+    "vue-tsc": "^2.1.10"
+  }
+}
