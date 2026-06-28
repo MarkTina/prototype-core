@@ -30,7 +30,7 @@
 
 ## 待处理事项
 
-- [ ] 创建并公开 `MarkTina/prototype-core`，确认公开历史通过 Secret 扫描。
+- [x] 创建并公开 `MarkTina/prototype-core`，确认公开历史通过 Secret 扫描。
 - [ ] 完成 `@marktowin/prototype-core@1.0.0` 首次 npmjs 发布并配置 Trusted Publisher。
 - [ ] 在首个业务产品中安装公共包，完成交互、全图、流程和流程编排回归。
 
