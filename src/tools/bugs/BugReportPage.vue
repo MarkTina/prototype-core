@@ -514,11 +514,8 @@ async function saveBugEdit() {
     ),
   )
   if (!saved) return
-  isEditingBug.value = false
-  editAttachments.value = []
-  clearPendingImages()
-  imageNotice.value = ''
-  editError.value = ''
+  // 保存成功后关闭编辑框，让用户明确感知提交已完成
+  cancelBugEdit()
 }
 
 async function updateBugStatus() {

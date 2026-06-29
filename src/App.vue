@@ -1214,6 +1214,16 @@ function openPrototypePage(nextMode?: typeof mode.value) {
   closeBugPage()
 }
 
+function openUpdateHistory() {
+  openPrototypePage('interactive')
+  showUpdateHistory.value = true
+}
+
+function openPrototypeHealth() {
+  openPrototypePage('interactive')
+  showPrototypeHealthPanel.value = true
+}
+
 function syncMobilePureInteractive(event: MediaQueryList | MediaQueryListEvent) {
   isMobileViewport.value = event.matches
 }
@@ -1396,8 +1406,8 @@ onBeforeUnmount(() => {
         >
           产品需求文档
         </a>
-        <button class="mode-btn top-level-mode-btn rounded-full bg-panel ring-1 ring-line" :class="{ active: showUpdateHistory }" @click="showUpdateHistory = true">更新历史</button>
-        <button class="mode-btn top-level-mode-btn rounded-full bg-panel ring-1 ring-line" :class="{ active: showPrototypeHealthPanel }" @click="showPrototypeHealthPanel = true">
+        <button class="mode-btn top-level-mode-btn rounded-full bg-panel ring-1 ring-line" :class="{ active: showUpdateHistory }" @click="openUpdateHistory">更新历史</button>
+        <button class="mode-btn top-level-mode-btn rounded-full bg-panel ring-1 ring-line" :class="{ active: showPrototypeHealthPanel }" @click="openPrototypeHealth">
           健康检查
         </button>
         <button class="mode-btn bug-nav-btn rounded-full bg-panel ring-1 ring-line" :class="{ active: appRoute === 'bugs' }" @click="openBugPage">
@@ -1793,7 +1803,13 @@ onBeforeUnmount(() => {
               <button class="annotation-list-edit" type="button" @click="openAnnotationDialog(annotation.id)">
                 {{ t('editProfile') }}
               </button>
-              <button class="annotation-list-delete annotation-delete-btn" type="button" :disabled="!annotationAuthorName.trim()" @click="removeAnnotation(annotation.id)">
+              <button
+                class="annotation-list-delete annotation-delete-btn"
+                type="button"
+                :disabled="!annotationAuthorName.trim()"
+                :title="!annotationAuthorName.trim() ? '请先输入昵称以删除注释' : ''"
+                @click="removeAnnotation(annotation.id)"
+              >
                 {{ t('annotationDelete') }}
               </button>
             </div>
@@ -1932,7 +1948,13 @@ onBeforeUnmount(() => {
     >
       <div class="annotation-popover-head">
         <b>{{ hoveredAnnotation.featureName }}</b>
-        <button class="annotation-delete-btn" type="button" :disabled="!annotationAuthorName.trim()" @click="removeAnnotation(hoveredAnnotation.id)">
+        <button
+          class="annotation-delete-btn"
+          type="button"
+          :disabled="!annotationAuthorName.trim()"
+          :title="!annotationAuthorName.trim() ? '请先输入昵称以删除注释' : ''"
+          @click="removeAnnotation(hoveredAnnotation.id)"
+        >
           {{ t('annotationDelete') }}
         </button>
       </div>
