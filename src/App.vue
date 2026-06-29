@@ -45,7 +45,6 @@ const {
   annotationPointsVisible,
   isPlacingAnnotation,
   hoveredAnnotationId,
-  hoveredAnnotationPopoverStyle,
   annotationDraft,
   activeAnnotation,
   annotationDialogMode,
@@ -180,6 +179,7 @@ const mobileGestureTriggered = ref(false)
 const annotationHoldId = ref('')
 const annotationDragPreview = ref<{ id: string; x: number; y: number } | null>(null)
 const annotationPositionSyncingIds = ref<Set<string>>(new Set())
+const popoverAnchorRect = ref<DOMRect | null>(null)
 let annotationHoldTimer: ReturnType<typeof setTimeout> | null = null
 const annotationPositionSaveTimers = new Map<string, ReturnType<typeof window.setTimeout>>()
 let annotationPress:
@@ -421,12 +421,39 @@ function annotationDisplayPointStyle(annotation: PrototypeAnnotation) {
   return annotationPointStyle(preview?.id === annotation.id ? { ...annotation, x: preview.x, y: preview.y } : annotation)
 }
 
+const hoveredAnnotationPopoverStyle = computed(() => {
+  if (!hoveredAnnotation.value || !popoverAnchorRect.value) return { left: '-9999px', top: '-9999px' }
+  const rect = popoverAnchorRect.value
+  return {
+    left: `${rect.left + rect.width / 2}px`,
+    top: `${rect.bottom + 8}px`,
+  }
+})
+
 function handleAnnotationPointClick(annotation: PrototypeAnnotation) {
   if (suppressedAnnotationClickId === annotation.id) {
     suppressedAnnotationClickId = ''
     return
   }
   openAnnotationDialog(annotation.id)
+}
+
+function getScrollWrapper(content: HTMLElement) {
+  return content.querySelector<HTMLElement>('.screen-scroll-wrapper')
+}
+
+function getAnnotationLayer(content: HTMLElement) {
+  return content.querySelector<HTMLElement>('.annotation-layer')
+}
+
+function computeAnnotationPositionFromEvent(event: PointerEvent | MouseEvent, content: HTMLElement) {
+  const rect = content.getBoundingClientRect()
+  const layer = getAnnotationLayer(content)
+  const fullWidth = layer?.scrollWidth ?? rect.width
+  const fullHeight = layer?.scrollHeight ?? rect.height
+  const x = ((event.clientX - rect.left + content.scrollLeft) / fullWidth) * 100
+  const y = ((event.clientY - rect.top + content.scrollTop) / fullHeight) * 100
+  return { x: Math.min(96, Math.max(4, x)), y: Math.min(96, Math.max(4, y)) }
 }
 
 function handleAnnotationPointPointerDown(annotation: PrototypeAnnotation, event: PointerEvent) {
@@ -465,12 +492,8 @@ function handleAnnotationPointPointerMove(event: PointerEvent) {
 
   event.preventDefault()
   event.stopPropagation()
-  const rect = annotationPress.content.getBoundingClientRect()
-  annotationDragPreview.value = {
-    id: annotationPress.annotation.id,
-    x: Math.min(96, Math.max(4, ((event.clientX - rect.left) / rect.width) * 100)),
-    y: Math.min(96, Math.max(4, ((event.clientY - rect.top) / rect.height) * 100)),
-  }
+  const { x, y } = computeAnnotationPositionFromEvent(event, annotationPress.content)
+  annotationDragPreview.value = { id: annotationPress.annotation.id, x, y }
 }
 
 function handleAnnotationPointPointerUp(event: PointerEvent) {
@@ -514,8 +537,16 @@ function handleAnnotationPointPointerCancel(event: PointerEvent) {
   annotationDragPreview.value = null
 }
 
-function handleAnnotationPointMouseEnter(annotation: PrototypeAnnotation) {
+function handleAnnotationPointMouseEnter(annotation: PrototypeAnnotation, event: MouseEvent) {
   if (annotationHoldId.value || annotationDragPreview.value) return
+  popoverAnchorRect.value = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  showAnnotationPopover(annotation.id)
+}
+
+function handleAnnotationListMouseEnter(annotation: PrototypeAnnotation) {
+  if (annotationHoldId.value || annotationDragPreview.value) return
+  const pointEl = document.querySelector(`[data-annotation-id="${annotation.id}"]`)
+  popoverAnchorRect.value = pointEl instanceof HTMLElement ? pointEl.getBoundingClientRect() : null
   showAnnotationPopover(annotation.id)
 }
 const currentPageDescriptionUpdatedLabel = computed(() => {
@@ -1630,37 +1661,40 @@ onBeforeUnmount(() => {
                     }"
                     @click.capture="!isMobilePureInteractive && handleAnnotationCanvasClick($event, screen.id)"
                   >
-                    <ScreenRenderer :screen="screen" />
-                    <div v-if="effectiveMode === 'interactive' && !isMobilePureInteractive && !presentationMode && activeCollaborationTab === 'annotations' && annotationPointsVisible" class="annotation-layer">
-                      <div
-                        v-for="(annotation, index) in currentScreenAnnotations"
-                        :key="annotation.id"
-                        class="annotation-point-wrap"
-                        :class="{
-                          'is-holding': annotationHoldId === annotation.id,
-                          'is-dragging': annotationDragPreview?.id === annotation.id,
-                          'is-syncing-position': annotationPositionSyncingIds.has(annotation.id),
-                        }"
-                        :style="annotationDisplayPointStyle(annotation)"
-                        @mouseenter="handleAnnotationPointMouseEnter(annotation)"
-                        @mouseleave="scheduleHideAnnotationPopover"
-                      >
-                        <button
-                          class="annotation-point"
-                          type="button"
-                          title="长按抓取后拖动位置"
-                          :disabled="annotationPositionSyncingIds.has(annotation.id)"
-                          @click.stop="handleAnnotationPointClick(annotation)"
-                          @pointerdown.stop="handleAnnotationPointPointerDown(annotation, $event)"
-                          @pointermove="handleAnnotationPointPointerMove"
-                          @pointerup="handleAnnotationPointPointerUp"
-                          @pointercancel="handleAnnotationPointPointerCancel"
+                    <div class="screen-scroll-wrapper">
+                      <ScreenRenderer :screen="screen" />
+                      <div v-if="effectiveMode === 'interactive' && !isMobilePureInteractive && !presentationMode && activeCollaborationTab === 'annotations' && annotationPointsVisible" class="annotation-layer">
+                        <div
+                          v-for="(annotation, index) in currentScreenAnnotations"
+                          :key="annotation.id"
+                          :data-annotation-id="annotation.id"
+                          class="annotation-point-wrap"
+                          :class="{
+                            'is-holding': annotationHoldId === annotation.id,
+                            'is-dragging': annotationDragPreview?.id === annotation.id,
+                            'is-syncing-position': annotationPositionSyncingIds.has(annotation.id),
+                          }"
+                          :style="annotationDisplayPointStyle(annotation)"
+                          @mouseenter="handleAnnotationPointMouseEnter(annotation, $event)"
+                          @mouseleave="scheduleHideAnnotationPopover"
                         >
-                          {{ index + 1 }}
-                        </button>
-                      </div>
-                      <div v-if="annotationDraftMatchesCurrentState" class="annotation-point-wrap draft" :style="annotationPointStyle(annotationDraft!)">
-                        <button class="annotation-point" type="button">+</button>
+                          <button
+                            class="annotation-point"
+                            type="button"
+                            title="长按抓取后拖动位置"
+                            :disabled="annotationPositionSyncingIds.has(annotation.id)"
+                            @click.stop="handleAnnotationPointClick(annotation)"
+                            @pointerdown.stop="handleAnnotationPointPointerDown(annotation, $event)"
+                            @pointermove="handleAnnotationPointPointerMove"
+                            @pointerup="handleAnnotationPointPointerUp"
+                            @pointercancel="handleAnnotationPointPointerCancel"
+                          >
+                            {{ index + 1 }}
+                          </button>
+                        </div>
+                        <div v-if="annotationDraftMatchesCurrentState" class="annotation-point-wrap draft" :style="annotationPointStyle(annotationDraft!)">
+                          <button class="annotation-point" type="button">+</button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1747,7 +1781,7 @@ onBeforeUnmount(() => {
         <p class="annotation-polling-notice">{{ annotationPollingNotice }}</p>
         <div v-if="activeCollaborationTab === 'annotations'" class="annotation-list">
           <p v-if="!currentScreenAnnotations.length" class="annotation-empty">{{ t('annotationEmpty') }}</p>
-          <section v-for="(annotation, index) in currentScreenAnnotations" :key="annotation.id" @mouseenter="hoveredAnnotationId = annotation.id" @mouseleave="hoveredAnnotationId = ''">
+          <section v-for="(annotation, index) in currentScreenAnnotations" :key="annotation.id" @mouseenter="handleAnnotationListMouseEnter(annotation)" @mouseleave="scheduleHideAnnotationPopover">
             <span>{{ index + 1 }}</span>
             <div>
               <h3>{{ annotation.featureName }}</h3>

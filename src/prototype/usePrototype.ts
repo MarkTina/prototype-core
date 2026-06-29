@@ -440,10 +440,6 @@ const currentScreenAnnotations = computed(() => annotations.value.filter((item) 
 const currentPageDescription = computed(() => pageDescriptions.value.find((item) => annotationScopeId(item.screenId, item.stateId) === currentAnnotationScopeId()) ?? null)
 const activeAnnotation = computed(() => annotations.value.find((item) => item.id === activeAnnotationId.value) ?? null)
 const hoveredAnnotation = computed(() => annotations.value.find((item) => item.id === hoveredAnnotationId.value) ?? null)
-const hoveredAnnotationPopoverStyle = computed(() => {
-  if (!hoveredAnnotation.value) return {}
-  return { left: `${hoveredAnnotation.value.x}%`, top: `${hoveredAnnotation.value.y}%` }
-})
 
 function annotationPointStyle(annotation: PrototypeAnnotation | AnnotationDraft) {
   return { left: `${annotation.x}%`, top: `${annotation.y}%` }
@@ -836,11 +832,14 @@ function handleAnnotationCanvasClick(event: MouseEvent, screenId: string) {
   if (!isPlacingAnnotation.value) return
   const target = event.currentTarget as HTMLElement
   const rect = target.getBoundingClientRect()
+  const layer = target.querySelector<HTMLElement>('.annotation-layer')
+  const fullWidth = layer?.scrollWidth ?? rect.width
+  const fullHeight = layer?.scrollHeight ?? rect.height
   annotationDraft.value = {
     screenId,
     stateId: normalizePrototypeStateId(screenId, activePrototypeStateId.value),
-    x: Math.round(((event.clientX - rect.left) / rect.width) * 1000) / 10,
-    y: Math.round(((event.clientY - rect.top) / rect.height) * 1000) / 10,
+    x: Math.round(((event.clientX - rect.left + target.scrollLeft) / fullWidth) * 1000) / 10,
+    y: Math.round(((event.clientY - rect.top + target.scrollTop) / fullHeight) * 1000) / 10,
     featureName: '',
     featureDescription: '',
     specialNote: '',
@@ -1280,7 +1279,6 @@ export function usePrototypeContext() {
     annotationPointsVisible,
     isPlacingAnnotation,
     hoveredAnnotationId,
-    hoveredAnnotationPopoverStyle,
     annotationDraft,
     activeAnnotation,
     annotationDialogMode,
