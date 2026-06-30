@@ -514,8 +514,8 @@ async function saveBugEdit() {
     ),
   )
   if (!saved) return
-  // 保存成功后关闭编辑框，让用户明确感知提交已完成
-  cancelBugEdit()
+  // 保存成功后关闭详情抽屉，让用户明确感知提交已完成
+  closeDetail()
 }
 
 async function updateBugStatus() {

@@ -200,9 +200,9 @@ const latestCoreVersionStatus = ref<'idle' | 'loading' | 'success' | 'error'>('i
 const hasNewerCoreVersion = computed(() => latestCoreVersionStatus.value === 'success' && latestCoreVersion.value !== currentCoreVersion)
 
 const latestCoreVersionLabel = computed(() => {
-  if (latestCoreVersionStatus.value === 'success') return `最新 v${latestCoreVersion.value}`
-  if (latestCoreVersionStatus.value === 'error') return '最新版本暂不可用'
-  return '最新版本检测中'
+  if (latestCoreVersionStatus.value === 'success') return `v${latestCoreVersion.value}`
+  if (latestCoreVersionStatus.value === 'error') return '版本暂不可用'
+  return '版本检测中'
 })
 
 async function checkLatestCoreVersion() {
@@ -1430,14 +1430,16 @@ onBeforeUnmount(() => {
     </div>
     <div v-if="!isMobilePureInteractive" class="top-chrome">
     <div class="apple-subnav">
-      <button class="project-title-btn" type="button" @click="openPrototypePage()">
-        <p class="text-[21px] font-semibold leading-none">{{ t('prototypeTitle') }}</p>
-        <p class="mt-1 text-xs text-muted">{{ t('prototypeSubtitle') }}</p>
-        <p class="mt-1 text-[11px] leading-none text-muted">
-          当前 v{{ currentCoreVersion }} ·
-          <span :class="{ 'text-warning': hasNewerCoreVersion }">{{ latestCoreVersionLabel }}</span>
-        </p>
-      </button>
+      <div class="project-identity">
+        <button class="project-title-btn" type="button" @click="openPrototypePage()">
+          <p class="text-[21px] font-semibold leading-none">{{ t('prototypeTitle') }}</p>
+          <p class="mt-1 text-xs text-muted">{{ t('prototypeSubtitle') }}</p>
+        </button>
+        <div class="core-version-stack" aria-label="原型内核版本">
+          <p><span>当前</span><b>v{{ currentCoreVersion }}</b></p>
+          <p><span>最新</span><b :class="{ 'text-warning': hasNewerCoreVersion }">{{ latestCoreVersionLabel }}</b></p>
+        </div>
+      </div>
       <div class="flex flex-wrap items-center justify-end gap-x-1.5 gap-y-2">
         <a
           class="mode-btn top-level-mode-btn rounded-full bg-panel ring-1 ring-line"
