@@ -23,6 +23,25 @@ void mountPrototypeApp({
 
 完整接入方式见 `examples/basic`。默认关闭访问认证并使用本地协作模式；需要云端协作时通过 `runtimeConfig` 显式注入配置。
 
+数据源面板会根据 `runtimeConfig` 检查 Gitee、OSS、原型访问和 Bug 删除密码是否齐全。部署变量不能在浏览器中直接读取，消费者只能传入是否存在，禁止传入真实值：
+
+```ts
+runtimeConfig: {
+  environment: {
+    deployment: {
+      host: Boolean(__DEPLOY_ENV_STATUS__.host),
+      port: Boolean(__DEPLOY_ENV_STATUS__.port),
+      username: Boolean(__DEPLOY_ENV_STATUS__.username),
+      password: Boolean(__DEPLOY_ENV_STATUS__.password),
+      path: Boolean(__DEPLOY_ENV_STATUS__.path),
+      backupPath: Boolean(__DEPLOY_ENV_STATUS__.backupPath),
+    },
+  },
+}
+```
+
+`__DEPLOY_ENV_STATUS__` 应由消费者构建配置根据 `DEPLOY_*` 是否存在生成，且只能包含布尔值。
+
 ## 开发
 
 ```bash

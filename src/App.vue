@@ -166,6 +166,7 @@ const authError = ref('')
 const isAuthenticated = ref(false)
 const prototypeInitialized = ref(false)
 const showPrototypeHealthPanel = ref(false)
+const showEnvironmentCheckPanel = ref(false)
 const prototypeHealthTab = ref<'overview' | 'matrix'>('overview')
 const pageDescriptionSummaryVisible = ref(false)
 const pageDescriptionCopyNotice = ref('')
@@ -194,6 +195,74 @@ let annotationPress:
   | null = null
 let suppressedAnnotationClickId = ''
 const runtimeConfig = getPrototypeRuntime()
+const hasRuntimeValue = (value: unknown) => typeof value === 'string' ? Boolean(value.trim()) : value === true
+
+type EnvironmentCheckItem = { name: string; configured: boolean }
+type EnvironmentCheckGroup = { id: string; title: string; items: EnvironmentCheckItem[] }
+
+const environmentCheckGroups = computed<EnvironmentCheckGroup[]>(() => {
+  const collaboration = runtimeConfig.collaboration ?? {}
+  const oss = runtimeConfig.oss ?? {}
+  const auth = runtimeConfig.auth ?? {}
+  const deployment = runtimeConfig.environment?.deployment ?? {}
+
+  return [
+    {
+      id: 'gitee',
+      title: 'Gitee 协作',
+      items: [
+        { name: 'VITE_COLLABORATION_PROVIDER', configured: hasRuntimeValue(collaboration.provider) },
+        { name: 'VITE_COLLABORATION_OWNER', configured: hasRuntimeValue(collaboration.owner) },
+        { name: 'VITE_COLLABORATION_REPO', configured: hasRuntimeValue(collaboration.repo) },
+        { name: 'VITE_COLLABORATION_REMOTE_BRANCH', configured: hasRuntimeValue(collaboration.remoteBranch) },
+        { name: 'VITE_COLLABORATION_PROJECT_ID', configured: hasRuntimeValue(collaboration.projectId) },
+        { name: 'VITE_COLLABORATION_CODE_BRANCH', configured: hasRuntimeValue(collaboration.codeBranch) },
+        { name: 'VITE_COLLABORATION_TOKEN', configured: hasRuntimeValue(collaboration.token) },
+      ],
+    },
+    {
+      id: 'oss',
+      title: '对象存储 OSS',
+      items: [
+        { name: 'VITE_OSS_BUCKET_IDENTIFIER', configured: hasRuntimeValue(oss.bucket) },
+        { name: 'VITE_OSS_BASE_URL', configured: hasRuntimeValue(oss.baseUrl) },
+        { name: 'VITE_OSS_ACCESS_KEY_ID', configured: hasRuntimeValue(oss.accessKeyId) },
+        { name: 'VITE_OSS_ACCESS_KEY_SECRET', configured: hasRuntimeValue(oss.accessKeySecret) },
+      ],
+    },
+    {
+      id: 'deployment',
+      title: '部署配置',
+      items: [
+        { name: 'DEPLOY_HOST', configured: deployment.host === true },
+        { name: 'DEPLOY_PORT', configured: deployment.port === true },
+        { name: 'DEPLOY_USERNAME', configured: deployment.username === true },
+        { name: 'DEPLOY_PASSWORD', configured: deployment.password === true },
+        { name: 'DEPLOY_PATH', configured: deployment.path === true },
+        { name: 'DEPLOY_BACKUP_PATH', configured: deployment.backupPath === true },
+      ],
+    },
+    {
+      id: 'auth',
+      title: '原型访问',
+      items: [
+        { name: 'VITE_PROTOTYPE_AUTH_USERNAME', configured: hasRuntimeValue(auth.username) },
+        { name: 'VITE_PROTOTYPE_AUTH_PASSWORD', configured: hasRuntimeValue(auth.password) },
+      ],
+    },
+    {
+      id: 'tools',
+      title: '工具安全',
+      items: [
+        { name: 'VITE_BUG_DELETE_CODE', configured: hasRuntimeValue(runtimeConfig.tools?.bugDeleteCode) },
+      ],
+    },
+  ]
+})
+
+const environmentCheckTotal = computed(() => environmentCheckGroups.value.reduce((total, group) => total + group.items.length, 0))
+const environmentConfiguredCount = computed(() => environmentCheckGroups.value.reduce((total, group) => total + group.items.filter((item) => item.configured).length, 0))
+const environmentMissingCount = computed(() => environmentCheckTotal.value - environmentConfiguredCount.value)
 const currentCoreVersion = __CORE_PACKAGE_VERSION__
 const latestCoreVersion = ref('')
 const latestCoreVersionStatus = ref<'idle' | 'loading' | 'success' | 'error'>('idle')
@@ -1049,6 +1118,10 @@ function cancelCurrentShortcutOperation() {
     pageDescriptionSummaryVisible.value = false
     return
   }
+  if (showEnvironmentCheckPanel.value) {
+    showEnvironmentCheckPanel.value = false
+    return
+  }
   if (isPlacingAnnotation.value || annotationDraft.value) cancelAnnotationDraft()
 }
 
@@ -1059,6 +1132,7 @@ function isEditableShortcutTarget(target: EventTarget | null) {
 function hasBlockingOverlay() {
   return showUpdateHistory.value
     || showPrototypeHealthPanel.value
+    || showEnvironmentCheckPanel.value
     || showFlowEditor.value
     || pageDescriptionEditing.value
     || pageDescriptionSummaryVisible.value
@@ -1896,8 +1970,36 @@ onBeforeUnmount(() => {
         >
           {{ collaborationBootstrapStatus === 'running' ? `${collaborationBootstrapProgress.current}/${collaborationBootstrapProgress.total}` : collaborationAllRemote ? '检查远端资料' : '初始化到 Gitee' }}
         </button>
+        <button class="environment-check-trigger" type="button" @click="showEnvironmentCheckPanel = true">
+          检查本地环境变量
+        </button>
       </template>
     </section>
+    <div v-if="showEnvironmentCheckPanel" class="environment-check-backdrop" @click.self="showEnvironmentCheckPanel = false">
+      <section class="environment-check-panel" role="dialog" aria-modal="true" aria-labelledby="environment-check-title">
+        <header>
+          <div>
+            <h2 id="environment-check-title">环境变量检查</h2>
+            <p :class="{ 'has-missing': environmentMissingCount > 0 }">
+              {{ environmentConfiguredCount }} / {{ environmentCheckTotal }} 已配置
+              <template v-if="environmentMissingCount"> · 缺失 {{ environmentMissingCount }} 项</template>
+            </p>
+          </div>
+          <button type="button" aria-label="关闭环境变量检查" @click="showEnvironmentCheckPanel = false">×</button>
+        </header>
+        <div class="environment-check-groups">
+          <section v-for="group in environmentCheckGroups" :key="group.id">
+            <h3>{{ group.title }}</h3>
+            <div v-for="item in group.items" :key="item.name" class="environment-check-row" :class="{ missing: !item.configured }">
+              <span aria-hidden="true">{{ item.configured ? '✓' : '✕' }}</span>
+              <code>{{ item.name }}</code>
+              <b>{{ item.configured ? '已配置' : '请配置' }}</b>
+            </div>
+          </section>
+        </div>
+        <footer>仅检查配置是否存在，不读取、展示或记录任何配置值。</footer>
+      </section>
+    </div>
     <aside
       v-if="appRoute === 'prototype' && !isMobilePureInteractive && !presentationMode"
       class="shortcut-panel"

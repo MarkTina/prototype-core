@@ -53,6 +53,16 @@ export interface PrototypeRuntimeConfig {
   tools?: {
     bugDeleteCode?: string
   }
+  environment?: {
+    deployment?: {
+      host?: boolean
+      port?: boolean
+      username?: boolean
+      password?: boolean
+      path?: boolean
+      backupPath?: boolean
+    }
+  }
 }
 
 export interface MountPrototypeAppOptions {

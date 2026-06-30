@@ -21,8 +21,9 @@
 - 内核与移动端/PC 最小示例均可构建，现有协作策略测试为 7 项。
 - 包可生成 `.tgz`，包含 ESM、声明文件和完整 CSS，不包含产品文件或源仓库配置。
 - 顶部导航展示当前内核包版本，并在应用启动后从 npm `latest` 查询最新版本；查询失败只降级显示，不影响原型主流程。
+- 数据源面板可检查 Gitee、OSS、部署、原型访问和 Bug 删除密码共 20 项配置；只展示变量名与存在状态，不读取或显示敏感值。
 - Gitee 与 OSS 配置已改为运行时注入；这些浏览器端能力只适用于原型，不构成生产级秘密保护。
-- npm 首次发布尚未完成；Trusted Publisher 必须在 npmjs 的包设置中与 `MarkTina/prototype-core` 和 `publish.yml` 精确绑定。
+- npm 公共发布已可用；Trusted Publisher 必须与 `MarkTina/prototype-core` 和 `publish.yml` 精确绑定。
 
 ## 演进方向
 
@@ -33,17 +34,18 @@
 
 - [x] 创建并公开 `MarkTina/prototype-core`，确认公开历史通过 Secret 扫描。
 - [x] 完成 `@marktowin/prototype-core@1.0.0` 首次 npmjs 发布并配置 Trusted Publisher。
-- [ ] 在首个业务产品中安装公共包，完成交互、全图、流程和流程编排回归。
+- [ ] 在首个业务产品中安装公共包，接入部署环境布尔状态，并完成交互、全图、流程和流程编排回归。
 
 ## 决策记录
 
 - 2026-06-28：使用独立公开 GitHub 仓库和 npmjs 公共包，不使用 GitHub Packages。原因：GitHub Packages 的公开 npm 包安装仍要求 Token，不能满足免认证安装。
 - 2026-06-28：新仓库采用全新 Git 历史并使用 MIT 许可证。原因：原仓库历史含已填写环境配置，且公开工具需要清晰复用授权。
 - 2026-06-28：包名确定为 `@marktowin/prototype-core`，源码仓库为 `MarkTina/prototype-core`。原因：npm 与 GitHub 账号不同，分别使用实际拥有的命名空间。
+- 2026-06-30：环境诊断只允许传递配置存在状态，不允许把部署密码等值注入浏览器。原因：浏览器无法安全读取 Node 环境，诊断功能不得扩大秘密暴露面。
 
 <!-- fresh-meta
 last-updated: 2026-06-30
-trigger-reason: 顶部导航新增内核当前版本与 npm 最新版本展示
+trigger-reason: 数据源面板新增安全的环境变量配置检查
 updated-by: handoff-maintainer
-next-review: 当版本来源、发布渠道或顶部版本交互发生变化时
+next-review: 当环境变量清单或运行时配置契约发生变化时
 -->
