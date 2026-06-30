@@ -20,6 +20,7 @@
 
 - 内核与移动端/PC 最小示例均可构建，现有协作策略测试为 7 项。
 - 包可生成 `.tgz`，包含 ESM、声明文件和完整 CSS，不包含产品文件或源仓库配置。
+- 顶部导航展示当前内核包版本，并在应用启动后从 npm `latest` 查询最新版本；查询失败只降级显示，不影响原型主流程。
 - Gitee 与 OSS 配置已改为运行时注入；这些浏览器端能力只适用于原型，不构成生产级秘密保护。
 - npm 首次发布尚未完成；Trusted Publisher 必须在 npmjs 的包设置中与 `MarkTina/prototype-core` 和 `publish.yml` 精确绑定。
 
@@ -39,3 +40,10 @@
 - 2026-06-28：使用独立公开 GitHub 仓库和 npmjs 公共包，不使用 GitHub Packages。原因：GitHub Packages 的公开 npm 包安装仍要求 Token，不能满足免认证安装。
 - 2026-06-28：新仓库采用全新 Git 历史并使用 MIT 许可证。原因：原仓库历史含已填写环境配置，且公开工具需要清晰复用授权。
 - 2026-06-28：包名确定为 `@marktowin/prototype-core`，源码仓库为 `MarkTina/prototype-core`。原因：npm 与 GitHub 账号不同，分别使用实际拥有的命名空间。
+
+<!-- fresh-meta
+last-updated: 2026-06-30
+trigger-reason: 顶部导航新增内核当前版本与 npm 最新版本展示
+updated-by: handoff-maintainer
+next-review: 当版本来源、发布渠道或顶部版本交互发生变化时
+-->

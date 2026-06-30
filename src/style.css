@@ -234,7 +234,7 @@
   }
 
   .project-title-btn {
-    @apply h-9 rounded-[14px] px-2 py-1 text-left transition hover:bg-soft active:scale-[0.99];
+    @apply min-h-9 rounded-[14px] px-2 py-1 text-left transition hover:bg-soft active:scale-[0.99];
   }
 
   .mode-btn.active {

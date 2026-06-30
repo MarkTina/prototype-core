@@ -194,6 +194,42 @@ let annotationPress:
   | null = null
 let suppressedAnnotationClickId = ''
 const runtimeConfig = getPrototypeRuntime()
+const currentCoreVersion = __CORE_PACKAGE_VERSION__
+const latestCoreVersion = ref('')
+const latestCoreVersionStatus = ref<'idle' | 'loading' | 'success' | 'error'>('idle')
+const hasNewerCoreVersion = computed(() => latestCoreVersionStatus.value === 'success' && latestCoreVersion.value !== currentCoreVersion)
+
+const latestCoreVersionLabel = computed(() => {
+  if (latestCoreVersionStatus.value === 'success') return `最新 v${latestCoreVersion.value}`
+  if (latestCoreVersionStatus.value === 'error') return '最新版本暂不可用'
+  return '最新版本检测中'
+})
+
+async function checkLatestCoreVersion() {
+  if (latestCoreVersionStatus.value !== 'idle') return
+  latestCoreVersionStatus.value = 'loading'
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), 10_000)
+
+  try {
+    const response = await fetch('https://registry.npmjs.org/@marktowin%2Fprototype-core/latest', {
+      cache: 'no-store',
+      signal: controller.signal,
+    })
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+
+    const manifest = (await response.json()) as { version?: unknown }
+    if (typeof manifest.version !== 'string' || !manifest.version.trim()) throw new Error('npm latest 响应缺少有效版本号')
+
+    latestCoreVersion.value = manifest.version.trim()
+    latestCoreVersionStatus.value = 'success'
+  } catch (error) {
+    latestCoreVersionStatus.value = 'error'
+    console.warn('⚠️ [内核版本] 无法获取 npm 最新版本', { currentVersion: currentCoreVersion, error })
+  } finally {
+    window.clearTimeout(timeout)
+  }
+}
 
 function configuredAuthUsername() {
   return runtimeConfig.auth?.username?.trim() ?? ''
@@ -213,6 +249,7 @@ function startAuthenticatedApp() {
     void initializeBugs()
     prototypeInitialized.value = true
   }
+  void checkLatestCoreVersion()
   startUpdateChecks()
 }
 
@@ -1396,6 +1433,10 @@ onBeforeUnmount(() => {
       <button class="project-title-btn" type="button" @click="openPrototypePage()">
         <p class="text-[21px] font-semibold leading-none">{{ t('prototypeTitle') }}</p>
         <p class="mt-1 text-xs text-muted">{{ t('prototypeSubtitle') }}</p>
+        <p class="mt-1 text-[11px] leading-none text-muted">
+          当前 v{{ currentCoreVersion }} ·
+          <span :class="{ 'text-warning': hasNewerCoreVersion }">{{ latestCoreVersionLabel }}</span>
+        </p>
       </button>
       <div class="flex flex-wrap items-center justify-end gap-x-1.5 gap-y-2">
         <a
