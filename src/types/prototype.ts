@@ -116,6 +116,7 @@ export interface PrototypeAnnotation {
 export interface PrototypePageDescription {
   screenId: string
   stateId?: string
+  highlighted?: boolean
   purpose: string
   structure: string
   features: string
@@ -143,6 +144,7 @@ export interface AnnotationDraft {
 export interface AnnotationManifestScreen {
   count: number
   updatedAt: string
+  highlighted?: boolean
 }
 
 export interface AnnotationManifest {

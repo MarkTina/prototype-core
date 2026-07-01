@@ -24,6 +24,7 @@
 - 数据源面板可检查 Gitee、OSS、部署、原型访问和 Bug 删除密码共 20 项配置；只展示变量名与存在状态，不读取或显示敏感值。
 - Gitee 与 OSS 配置已改为运行时注入；这些浏览器端能力只适用于原型，不构成生产级秘密保护。
 - npm 公共发布已可用；Trusted Publisher 必须与 `MarkTina/prototype-core` 和 `publish.yml` 精确绑定。
+- 页面描述支持 `highlighted` 重点标注；被标注的状态 scope 在左侧导航面板与状态页切换面板显示小红点。
 
 ## 演进方向
 
@@ -44,8 +45,8 @@
 - 2026-06-30：环境诊断只允许传递配置存在状态，不允许把部署密码等值注入浏览器。原因：浏览器无法安全读取 Node 环境，诊断功能不得扩大秘密暴露面。
 
 <!-- fresh-meta
-last-updated: 2026-06-30
-trigger-reason: 数据源面板新增安全的环境变量配置检查
+last-updated: 2026-07-01
+trigger-reason: 页面描述新增 highlighted 重点标注能力
 updated-by: handoff-maintainer
-next-review: 当环境变量清单或运行时配置契约发生变化时
+next-review: 当页面描述字段或协作 manifest 结构变化时
 -->

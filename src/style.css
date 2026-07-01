@@ -1389,6 +1389,14 @@
     @apply text-xs font-semibold text-ink;
   }
 
+  .page-description-form label.page-description-highlight-field {
+    @apply flex items-center gap-2;
+  }
+
+  .page-description-form label.page-description-highlight-field input[type="checkbox"] {
+    @apply h-4 w-4 accent-ocean;
+  }
+
   .page-description-form textarea {
     @apply mt-2 min-h-24 w-full resize-none rounded-[12px] border border-line bg-soft px-3 py-2 text-xs leading-5 text-ink outline-none focus:border-ocean;
   }
@@ -1701,6 +1709,14 @@
 
   .prototype-state-annotation-count {
     @apply ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-ocean px-1.5 text-[9px] font-semibold text-white;
+  }
+
+  .screen-highlight-dot {
+    @apply ml-2 h-2 w-2 shrink-0 rounded-full bg-danger;
+  }
+
+  .prototype-state-highlight-dot {
+    @apply ml-auto h-2 w-2 shrink-0 rounded-full bg-danger;
   }
 
   .interactive-side-nav {

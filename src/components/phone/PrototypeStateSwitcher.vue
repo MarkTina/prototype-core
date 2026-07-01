@@ -6,6 +6,7 @@ defineProps<{
   options: PrototypeStateOption[]
   activeId: PrototypeStateId
   countForState?: (id: PrototypeStateId) => number
+  highlightedIds?: Set<string>
 }>()
 
 const emit = defineEmits<{
@@ -26,6 +27,7 @@ const emit = defineEmits<{
       <span />
       {{ item.label }}
       <b v-if="countForState?.(item.id)" class="prototype-state-annotation-count">{{ countForState(item.id) }}</b>
+      <span v-if="highlightedIds?.has(item.id)" class="prototype-state-highlight-dot" aria-hidden="true" />
     </button>
   </aside>
 </template>

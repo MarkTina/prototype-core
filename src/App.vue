@@ -73,6 +73,8 @@ const {
   flowZoomPercent,
   currentScreenAnnotations,
   currentPageDescription,
+  isScreenHighlighted,
+  activeScreenHighlightedStateIds,
   hoveredAnnotation,
   initializePrototype,
   t,
@@ -451,6 +453,7 @@ function resetPageDescriptionEditorFromCurrent() {
   const description = currentPageDescription.value
   pageDescriptionEditor.value = description
     ? {
+        highlighted: description.highlighted ?? false,
         purpose: description.purpose,
         structure: description.structure,
         features: description.features,
@@ -462,6 +465,7 @@ function resetPageDescriptionEditorFromCurrent() {
         developmentNotes: description.developmentNotes,
       }
     : {
+        highlighted: false,
         purpose: '',
         structure: '',
         features: '',
@@ -1655,6 +1659,7 @@ onBeforeUnmount(() => {
                 <component :is="screen.icon" class="h-4 w-4" />
                 <span class="flex-1 text-left">{{ screen.code }} {{ screen.title }}</span>
                 <span v-if="annotationCountByScreen(screen.id)" class="annotation-nav-badge">{{ annotationCountByScreen(screen.id) }}</span>
+                <span v-if="isScreenHighlighted(screen.id)" class="screen-highlight-dot" aria-hidden="true" />
               </button>
             </div>
             <svg v-if="interactiveSideNavCanScrollUp" class="side-nav-scroll-hint-top" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
@@ -1772,6 +1777,7 @@ onBeforeUnmount(() => {
                   :options="prototypeStateOptions"
                   :active-id="activePrototypeStateId"
                   :count-for-state="(stateId) => annotationCountByState(currentScreen, stateId)"
+                  :highlighted-ids="activeScreenHighlightedStateIds"
                   @change="setPrototypeState(currentScreen, $event)"
                 />
                 <div :class="screen.platform === 'pc' ? 'desktop-frame' : 'phone-screen'">
@@ -2041,6 +2047,10 @@ onBeforeUnmount(() => {
         <form class="page-description-form" @submit.prevent="handlePageDescriptionSave">
           <p v-if="!currentPageDescription" class="annotation-empty">{{ t('pageDescriptionEmpty') }}</p>
           <small v-else-if="currentPageDescriptionUpdatedLabel" class="page-description-meta">{{ currentPageDescriptionUpdatedLabel }}</small>
+          <label class="page-description-highlight-field">
+            <input v-model="pageDescriptionEditor.highlighted" type="checkbox" />
+            <span>重点标注当前状态页</span>
+          </label>
           <label>
             <span>{{ t('pageDescriptionPurpose') }}</span>
             <textarea v-model="pageDescriptionEditor.purpose" :placeholder="t('pageDescriptionPurposePlaceholder')" />

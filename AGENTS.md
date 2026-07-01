@@ -17,9 +17,10 @@
 
 1. `HANDOFF.md`：确认稳定边界、当前限制和待办。
 2. `README.md`：确认安装、公共 API 和发布方式。
-3. `src/core/` 与 `src/types/prototype.ts`：确认公共契约。
-4. 涉及运行行为时再检查 `src/prototype/`、`src/App.vue` 和 `examples/basic/`。
-5. 修改前运行 `git status --short`，不要覆盖用户改动。
+3. 涉及消费者项目接入或业务原型实施时，完整阅读 `AI-PROTOTYPE-GUIDE.md`。
+4. `src/core/` 与 `src/types/prototype.ts`：确认公共契约。
+5. 涉及运行行为时再检查 `src/prototype/`、`src/App.vue` 和 `examples/basic/`。
+6. 修改前运行 `git status --short`，不要覆盖用户改动。
 
 ## 关键事实与陷阱
 

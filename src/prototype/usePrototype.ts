@@ -164,6 +164,7 @@ const annotationManifest = ref<AnnotationManifest | null>(null)
 const pageDescriptions = ref<PrototypePageDescription[]>([])
 const pageDescriptionManifest = ref<AnnotationManifest | null>(null)
 const pageDescriptionEditor = ref({
+  highlighted: false,
   purpose: '',
   structure: '',
   features: '',
@@ -438,6 +439,32 @@ function currentAnnotationScopeId() {
 
 const currentScreenAnnotations = computed(() => annotations.value.filter((item) => annotationScopeId(item.screenId, item.stateId) === currentAnnotationScopeId()))
 const currentPageDescription = computed(() => pageDescriptions.value.find((item) => annotationScopeId(item.screenId, item.stateId) === currentAnnotationScopeId()) ?? null)
+
+function isScopeHighlighted(scopeId: string): boolean {
+  const fromManifest = pageDescriptionManifest.value?.scopes?.[scopeId]
+  if (fromManifest && 'highlighted' in fromManifest) return fromManifest.highlighted === true
+  return pageDescriptions.value.some((item) => annotationScopeId(item.screenId, item.stateId) === scopeId && item.highlighted === true)
+}
+
+function isScreenHighlighted(screenId: string): boolean {
+  return annotationScopeIdsByScreen(screenId).some((scopeId) => isScopeHighlighted(scopeId))
+}
+
+function highlightedStateIdsForScreen(screenId: string): Set<string> {
+  const stateOptions = getPrototypeStateOptions(screenId)
+  const ids = new Set<string>()
+  stateOptions.forEach((state) => {
+    if (isScopeHighlighted(annotationScopeId(screenId, state.id))) ids.add(state.id)
+  })
+  return ids
+}
+
+const activeScreenHighlightedStateIds = computed(() => highlightedStateIdsForScreen(currentScreen.value))
+
+const activeScreenHighlighted = computed(() => isScreenHighlighted(currentScreen.value))
+
+const activeScopeHighlighted = computed(() => isScopeHighlighted(currentAnnotationScopeId()))
+
 const activeAnnotation = computed(() => annotations.value.find((item) => item.id === activeAnnotationId.value) ?? null)
 const hoveredAnnotation = computed(() => annotations.value.find((item) => item.id === hoveredAnnotationId.value) ?? null)
 
@@ -448,6 +475,7 @@ function annotationPointStyle(annotation: PrototypeAnnotation | AnnotationDraft)
 function syncPageDescriptionEditor() {
   const current = currentPageDescription.value
   pageDescriptionEditor.value = {
+    highlighted: current?.highlighted ?? false,
     purpose: current?.purpose ?? '',
     structure: current?.structure ?? '',
     features: current?.features ?? '',
@@ -491,6 +519,7 @@ function normalizePageDescriptions(value: unknown): PrototypePageDescription[] {
     return [{
       screenId: raw.screenId,
       stateId: normalizePrototypeStateId(raw.screenId, raw.stateId),
+      highlighted: raw.highlighted === true,
       purpose: String(raw.purpose ?? ''),
       structure: String(raw.structure ?? ''),
       features: String(raw.features ?? ''),
@@ -600,7 +629,7 @@ function updateManifestCount(screenId: string, stateId: string | undefined, coun
   annotationManifest.value = existing
 }
 
-function updatePageDescriptionManifest(screenId: string, stateId: string | undefined, count: number) {
+function updatePageDescriptionManifest(screenId: string, stateId: string | undefined, count: number, highlighted?: boolean) {
   const now = new Date().toISOString()
   const scopeId = annotationScopeId(screenId, stateId)
   const existing = pageDescriptionManifest.value ?? {
@@ -609,7 +638,10 @@ function updatePageDescriptionManifest(screenId: string, stateId: string | undef
     scopes: {},
     screens: {},
   }
-  existing.scopes = { ...(existing.scopes ?? {}), [scopeId]: { count, updatedAt: now } }
+  existing.scopes = {
+    ...(existing.scopes ?? {}),
+    [scopeId]: highlighted === true ? { count, updatedAt: now, highlighted: true } : { count, updatedAt: now },
+  }
   const total = annotationScopeIdsByScreen(screenId).reduce((sum, id) => sum + (existing.scopes?.[id]?.count ?? 0), 0)
   existing.screens = { ...existing.screens, [screenId]: { count: total, updatedAt: now } }
   existing.updatedAt = now
@@ -641,7 +673,7 @@ async function loadCurrentPageDescriptionFromRemote() {
   const syncedAt = new Date().toISOString()
   writeCollaborationCache('pageDescriptions', merged, remote.sha, syncedAt)
   pageDescriptions.value = readCollaborationCache<PrototypePageDescription[]>('pageDescriptions')?.value ?? merged
-  updatePageDescriptionManifest(screenId, stateId, 1)
+  updatePageDescriptionManifest(screenId, stateId, 1, value.highlighted)
   if (scopeId === currentAnnotationScopeId()) syncPageDescriptionEditor()
   setCollaborationSource('pageDescriptions', 'gitee', 'success', remote.legacy ? '已读取主分支旧目录' : '', syncedAt)
   return true
@@ -733,16 +765,21 @@ async function refreshAllCollaborationData(fromPolling = false) {
 function buildInitializationManifest(kind: 'annotations' | 'pageDescriptions') {
   const now = new Date().toISOString()
   const items = kind === 'annotations' ? annotations.value : pageDescriptions.value
-  const grouped = new Map<string, { screenId: string; count: number }>()
+  const grouped = new Map<string, { screenId: string; count: number; highlighted: boolean }>()
   items.forEach((item) => {
     const id = annotationScopeId(item.screenId, item.stateId)
     const existing = grouped.get(id)
-    grouped.set(id, { screenId: item.screenId, count: (existing?.count ?? 0) + 1 })
+    const itemHighlighted = kind === 'pageDescriptions' && (item as PrototypePageDescription).highlighted === true
+    grouped.set(id, {
+      screenId: item.screenId,
+      count: (existing?.count ?? 0) + 1,
+      highlighted: existing?.highlighted === true || itemHighlighted,
+    })
   })
   const scopes: NonNullable<AnnotationManifest['scopes']> = {}
   const screenCounts: AnnotationManifest['screens'] = {}
-  grouped.forEach(({ screenId, count }, id) => {
-    scopes[id] = { count, updatedAt: now }
+  grouped.forEach(({ screenId, count, highlighted }, id) => {
+    scopes[id] = highlighted === true ? { count, updatedAt: now, highlighted: true } : { count, updatedAt: now }
     screenCounts[screenId] = { count: (screenCounts[screenId]?.count ?? 0) + count, updatedAt: now }
   })
   return { projectId: collaborationContext.projectId, updatedAt: now, scopes, screens: screenCounts } satisfies AnnotationManifest
@@ -1012,7 +1049,7 @@ async function saveCurrentPageDescription() {
     try {
       const saved = await saveRemotePageDescription(annotationScopeId(screenId, stateId), next.authorName ?? '未署名', next)
       if (!saved) return false
-      updatePageDescriptionManifest(screenId, stateId, 1)
+      updatePageDescriptionManifest(screenId, stateId, 1, next.highlighted)
       if (pageDescriptionManifest.value) await saveRemotePageDescriptionManifest(pageDescriptionManifest.value, next.authorName ?? '未署名', annotationScopeId(screenId, stateId))
       const merged = [...pageDescriptions.value.filter((item) => annotationScopeId(item.screenId, item.stateId) !== annotationScopeId(screenId, stateId)), next]
       const syncedAt = new Date().toISOString()
@@ -1030,7 +1067,7 @@ async function saveCurrentPageDescription() {
   pageDescriptions.value = [...pageDescriptions.value.filter((item) => annotationScopeId(item.screenId, item.stateId) !== annotationScopeId(screenId, stateId)), next]
   writeCollaborationCache('pageDescriptions', pageDescriptions.value, null, null)
   setCollaborationSource('pageDescriptions', 'local-cache', 'success', collaborationContext.unavailableReason)
-  updatePageDescriptionManifest(screenId, stateId, 1)
+  updatePageDescriptionManifest(screenId, stateId, 1, next.highlighted)
   return true
 }
 
@@ -1307,6 +1344,11 @@ export function usePrototypeContext() {
     flowZoomPercent,
     currentScreenAnnotations,
     currentPageDescription,
+    isScopeHighlighted,
+    isScreenHighlighted,
+    activeScreenHighlightedStateIds,
+    activeScreenHighlighted,
+    activeScopeHighlighted,
     hoveredAnnotation,
     initializePrototype,
     t,
