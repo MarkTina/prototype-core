@@ -165,6 +165,7 @@ const pageDescriptions = ref<PrototypePageDescription[]>([])
 const pageDescriptionManifest = ref<AnnotationManifest | null>(null)
 const pageDescriptionEditor = ref({
   highlighted: false,
+  highlightColor: '#ef4444',
   purpose: '',
   structure: '',
   features: '',
@@ -446,20 +447,32 @@ function isScopeHighlighted(scopeId: string): boolean {
   return pageDescriptions.value.some((item) => annotationScopeId(item.screenId, item.stateId) === scopeId && item.highlighted === true)
 }
 
+function highlightColorForScope(scopeId: string): string {
+  const fromManifest = pageDescriptionManifest.value?.scopes?.[scopeId]
+  if (fromManifest?.highlighted === true) return fromManifest.highlightColor ?? '#ef4444'
+  return pageDescriptions.value.find((item) => annotationScopeId(item.screenId, item.stateId) === scopeId && item.highlighted === true)?.highlightColor ?? '#ef4444'
+}
+
 function isScreenHighlighted(screenId: string): boolean {
   return annotationScopeIdsByScreen(screenId).some((scopeId) => isScopeHighlighted(scopeId))
 }
 
-function highlightedStateIdsForScreen(screenId: string): Set<string> {
-  const stateOptions = getPrototypeStateOptions(screenId)
-  const ids = new Set<string>()
-  stateOptions.forEach((state) => {
-    if (isScopeHighlighted(annotationScopeId(screenId, state.id))) ids.add(state.id)
-  })
-  return ids
+function highlightColorForScreen(screenId: string): string {
+  const scopeId = annotationScopeIdsByScreen(screenId).find((id) => isScopeHighlighted(id))
+  return scopeId ? highlightColorForScope(scopeId) : '#ef4444'
 }
 
-const activeScreenHighlightedStateIds = computed(() => highlightedStateIdsForScreen(currentScreen.value))
+function highlightedStateColorsForScreen(screenId: string): Record<string, string> {
+  const stateOptions = getPrototypeStateOptions(screenId)
+  const colors: Record<string, string> = {}
+  stateOptions.forEach((state) => {
+    const scopeId = annotationScopeId(screenId, state.id)
+    if (isScopeHighlighted(scopeId)) colors[state.id] = highlightColorForScope(scopeId)
+  })
+  return colors
+}
+
+const activeScreenHighlightedStateColors = computed(() => highlightedStateColorsForScreen(currentScreen.value))
 
 const activeScreenHighlighted = computed(() => isScreenHighlighted(currentScreen.value))
 
@@ -476,6 +489,7 @@ function syncPageDescriptionEditor() {
   const current = currentPageDescription.value
   pageDescriptionEditor.value = {
     highlighted: current?.highlighted ?? false,
+    highlightColor: current?.highlightColor ?? '#ef4444',
     purpose: current?.purpose ?? '',
     structure: current?.structure ?? '',
     features: current?.features ?? '',
@@ -629,7 +643,7 @@ function updateManifestCount(screenId: string, stateId: string | undefined, coun
   annotationManifest.value = existing
 }
 
-function updatePageDescriptionManifest(screenId: string, stateId: string | undefined, count: number, highlighted?: boolean) {
+function updatePageDescriptionManifest(screenId: string, stateId: string | undefined, count: number, highlighted?: boolean, highlightColor?: string) {
   const now = new Date().toISOString()
   const scopeId = annotationScopeId(screenId, stateId)
   const existing = pageDescriptionManifest.value ?? {
@@ -640,7 +654,7 @@ function updatePageDescriptionManifest(screenId: string, stateId: string | undef
   }
   existing.scopes = {
     ...(existing.scopes ?? {}),
-    [scopeId]: highlighted === true ? { count, updatedAt: now, highlighted: true } : { count, updatedAt: now },
+    [scopeId]: highlighted === true ? { count, updatedAt: now, highlighted: true, highlightColor: highlightColor ?? '#ef4444' } : { count, updatedAt: now },
   }
   const total = annotationScopeIdsByScreen(screenId).reduce((sum, id) => sum + (existing.scopes?.[id]?.count ?? 0), 0)
   existing.screens = { ...existing.screens, [screenId]: { count: total, updatedAt: now } }
@@ -673,7 +687,7 @@ async function loadCurrentPageDescriptionFromRemote() {
   const syncedAt = new Date().toISOString()
   writeCollaborationCache('pageDescriptions', merged, remote.sha, syncedAt)
   pageDescriptions.value = readCollaborationCache<PrototypePageDescription[]>('pageDescriptions')?.value ?? merged
-  updatePageDescriptionManifest(screenId, stateId, 1, value.highlighted)
+  updatePageDescriptionManifest(screenId, stateId, 1, value.highlighted, value.highlightColor)
   if (scopeId === currentAnnotationScopeId()) syncPageDescriptionEditor()
   setCollaborationSource('pageDescriptions', 'gitee', 'success', remote.legacy ? '已读取主分支旧目录' : '', syncedAt)
   return true
@@ -765,7 +779,7 @@ async function refreshAllCollaborationData(fromPolling = false) {
 function buildInitializationManifest(kind: 'annotations' | 'pageDescriptions') {
   const now = new Date().toISOString()
   const items = kind === 'annotations' ? annotations.value : pageDescriptions.value
-  const grouped = new Map<string, { screenId: string; count: number; highlighted: boolean }>()
+  const grouped = new Map<string, { screenId: string; count: number; highlighted: boolean; highlightColor?: string }>()
   items.forEach((item) => {
     const id = annotationScopeId(item.screenId, item.stateId)
     const existing = grouped.get(id)
@@ -774,12 +788,13 @@ function buildInitializationManifest(kind: 'annotations' | 'pageDescriptions') {
       screenId: item.screenId,
       count: (existing?.count ?? 0) + 1,
       highlighted: existing?.highlighted === true || itemHighlighted,
+      highlightColor: itemHighlighted ? (item as PrototypePageDescription).highlightColor ?? '#ef4444' : existing?.highlightColor,
     })
   })
   const scopes: NonNullable<AnnotationManifest['scopes']> = {}
   const screenCounts: AnnotationManifest['screens'] = {}
-  grouped.forEach(({ screenId, count, highlighted }, id) => {
-    scopes[id] = highlighted === true ? { count, updatedAt: now, highlighted: true } : { count, updatedAt: now }
+  grouped.forEach(({ screenId, count, highlighted, highlightColor }, id) => {
+    scopes[id] = highlighted === true ? { count, updatedAt: now, highlighted: true, highlightColor: highlightColor ?? '#ef4444' } : { count, updatedAt: now }
     screenCounts[screenId] = { count: (screenCounts[screenId]?.count ?? 0) + count, updatedAt: now }
   })
   return { projectId: collaborationContext.projectId, updatedAt: now, scopes, screens: screenCounts } satisfies AnnotationManifest
@@ -1049,7 +1064,7 @@ async function saveCurrentPageDescription() {
     try {
       const saved = await saveRemotePageDescription(annotationScopeId(screenId, stateId), next.authorName ?? '未署名', next)
       if (!saved) return false
-      updatePageDescriptionManifest(screenId, stateId, 1, next.highlighted)
+      updatePageDescriptionManifest(screenId, stateId, 1, next.highlighted, next.highlightColor)
       if (pageDescriptionManifest.value) await saveRemotePageDescriptionManifest(pageDescriptionManifest.value, next.authorName ?? '未署名', annotationScopeId(screenId, stateId))
       const merged = [...pageDescriptions.value.filter((item) => annotationScopeId(item.screenId, item.stateId) !== annotationScopeId(screenId, stateId)), next]
       const syncedAt = new Date().toISOString()
@@ -1067,7 +1082,7 @@ async function saveCurrentPageDescription() {
   pageDescriptions.value = [...pageDescriptions.value.filter((item) => annotationScopeId(item.screenId, item.stateId) !== annotationScopeId(screenId, stateId)), next]
   writeCollaborationCache('pageDescriptions', pageDescriptions.value, null, null)
   setCollaborationSource('pageDescriptions', 'local-cache', 'success', collaborationContext.unavailableReason)
-  updatePageDescriptionManifest(screenId, stateId, 1, next.highlighted)
+  updatePageDescriptionManifest(screenId, stateId, 1, next.highlighted, next.highlightColor)
   return true
 }
 
@@ -1346,7 +1361,8 @@ export function usePrototypeContext() {
     currentPageDescription,
     isScopeHighlighted,
     isScreenHighlighted,
-    activeScreenHighlightedStateIds,
+    highlightColorForScreen,
+    activeScreenHighlightedStateColors,
     activeScreenHighlighted,
     activeScopeHighlighted,
     hoveredAnnotation,

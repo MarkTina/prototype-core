@@ -671,6 +671,10 @@
     @apply min-w-16 text-center text-sm font-semibold text-ink;
   }
 
+  .bug-pagination-top {
+    @apply mb-3;
+  }
+
   .bug-detail-backdrop {
     @apply fixed inset-0 z-[140] flex justify-end bg-black/35 p-4 backdrop-blur-sm;
   }
@@ -1397,6 +1401,42 @@
     @apply h-4 w-4 accent-ocean;
   }
 
+  .page-description-highlight-colors {
+    @apply rounded-[14px] border border-line bg-panel p-3;
+  }
+
+  .page-description-highlight-colors > span {
+    @apply text-xs font-semibold text-ink;
+  }
+
+  .page-description-highlight-swatches {
+    @apply mt-3 flex flex-wrap gap-2;
+  }
+
+  .page-description-form .page-description-highlight-swatches button {
+    @apply h-7 w-7 rounded-full border-2 border-transparent p-0 ring-offset-2 transition;
+  }
+
+  .page-description-form .page-description-highlight-swatches button.active {
+    @apply border-panel ring-2 ring-ink;
+  }
+
+  .page-description-custom-color {
+    @apply mt-3 flex gap-2;
+  }
+
+  .page-description-custom-color input {
+    @apply h-10 min-w-0 flex-1 rounded-[12px] border border-line bg-soft px-3 text-sm font-semibold text-ink outline-none focus:border-ocean;
+  }
+
+  .page-description-form .page-description-custom-color button {
+    @apply h-10 w-auto shrink-0 px-5;
+  }
+
+  .page-description-highlight-colors > small {
+    @apply mt-2 block text-xs text-muted;
+  }
+
   .page-description-form textarea {
     @apply mt-2 min-h-24 w-full resize-none rounded-[12px] border border-line bg-soft px-3 py-2 text-xs leading-5 text-ink outline-none focus:border-ocean;
   }
@@ -1711,12 +1751,14 @@
     @apply ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-ocean px-1.5 text-[9px] font-semibold text-white;
   }
 
-  .screen-highlight-dot {
-    @apply h-4 w-1 shrink-0 self-center rounded-full bg-danger;
+  .screen-highlight-bookmark,
+  .prototype-state-highlight-bookmark {
+    @apply h-4 w-3 shrink-0 self-center;
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 72%, 0 100%);
   }
 
-  .prototype-state-highlight-dot {
-    @apply h-5 w-1 shrink-0 self-center rounded-full bg-danger;
+  .prototype-state-highlight-bookmark {
+    @apply h-5 w-3.5;
   }
 
   .interactive-side-nav {

@@ -737,6 +737,15 @@ async function updateBugStatus() {
           </div>
         </div>
 
+        <div v-if="filteredBugs.length" class="bug-pagination bug-pagination-top">
+          <span>第 {{ pageStart }}-{{ pageEnd }} 条，共 {{ sortedBugs.length }} 条</span>
+          <div>
+            <button type="button" :disabled="currentPage <= 1" @click="currentPage -= 1">上一页</button>
+            <strong>{{ currentPage }} / {{ totalPages }}</strong>
+            <button type="button" :disabled="currentPage >= totalPages" @click="currentPage += 1">下一页</button>
+          </div>
+        </div>
+
         <div class="bug-list">
           <p v-if="!filteredBugs.length" class="bug-empty">当前筛选条件下暂无 Bug。</p>
           <article v-for="bug in paginatedBugs" :key="bug.id" class="bug-list-item" :class="`is-${statusTone[bug.status]}`">

@@ -74,7 +74,8 @@ const {
   currentScreenAnnotations,
   currentPageDescription,
   isScreenHighlighted,
-  activeScreenHighlightedStateIds,
+  highlightColorForScreen,
+  activeScreenHighlightedStateColors,
   hoveredAnnotation,
   initializePrototype,
   t,
@@ -174,6 +175,44 @@ const pageDescriptionSummaryVisible = ref(false)
 const pageDescriptionCopyNotice = ref('')
 const selectedPageDescriptionSectionIds = ref<string[]>([...defaultPageDescriptionSectionIds])
 const pageDescriptionEditing = ref(false)
+const presetHighlightColors = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6']
+const customHighlightColorInput = ref('')
+const customHighlightColorNotice = ref('')
+const customHighlightColorStorageKey = `prototype-highlight-colors:${collaborationContext.projectId}`
+const customHighlightColors = ref<string[]>(loadCustomHighlightColors())
+
+function loadCustomHighlightColors(): string[] {
+  try {
+    const stored = window.localStorage.getItem(customHighlightColorStorageKey)
+    if (!stored) return []
+    const parsed = JSON.parse(stored)
+    return Array.isArray(parsed) ? parsed.filter((color): color is string => /^#[0-9a-f]{6}$/i.test(color)) : []
+  } catch {
+    return []
+  }
+}
+
+function selectHighlightColor(color: string) {
+  pageDescriptionEditor.value.highlightColor = color
+}
+
+function addCustomHighlightColor() {
+  const color = customHighlightColorInput.value.trim().toLowerCase()
+  if (!/^#[0-9a-f]{6}$/.test(color)) {
+    customHighlightColorNotice.value = '请输入 #RRGGBB 格式的颜色值'
+    return
+  }
+  customHighlightColors.value = [color, ...customHighlightColors.value.filter((item) => item !== color)]
+  try {
+    window.localStorage.setItem(customHighlightColorStorageKey, JSON.stringify(customHighlightColors.value))
+  } catch {
+    customHighlightColorNotice.value = '颜色已添加，但本地缓存失败'
+    return
+  }
+  pageDescriptionEditor.value.highlightColor = color
+  customHighlightColorInput.value = ''
+  customHighlightColorNotice.value = '已添加并保存到本地'
+}
 const mobilePagePickerVisible = ref(false)
 const mobilePagePickerQuery = ref('')
 const mobilePagePickerExpandedIds = ref<Set<string>>(new Set())
@@ -454,6 +493,7 @@ function resetPageDescriptionEditorFromCurrent() {
   pageDescriptionEditor.value = description
     ? {
         highlighted: description.highlighted ?? false,
+        highlightColor: description.highlightColor ?? '#ef4444',
         purpose: description.purpose,
         structure: description.structure,
         features: description.features,
@@ -466,6 +506,7 @@ function resetPageDescriptionEditorFromCurrent() {
       }
     : {
         highlighted: false,
+        highlightColor: '#ef4444',
         purpose: '',
         structure: '',
         features: '',
@@ -1657,10 +1698,15 @@ onBeforeUnmount(() => {
                   aria-hidden="true"
                 >{{ screen.platform === 'pc' ? 'P' : 'M' }}</span>
                 <component :is="screen.icon" class="h-4 w-4" />
+                <span
+                  v-if="isScreenHighlighted(screen.id)"
+                  class="screen-highlight-bookmark"
+                  :style="{ backgroundColor: highlightColorForScreen(screen.id) }"
+                  aria-hidden="true"
+                />
                 <span class="flex-1 text-left">{{ screen.code }} {{ screen.title }}</span>
                 <div class="ml-auto flex items-center gap-2">
                   <span v-if="annotationCountByScreen(screen.id)" class="annotation-nav-badge">{{ annotationCountByScreen(screen.id) }}</span>
-                  <span v-if="isScreenHighlighted(screen.id)" class="screen-highlight-dot" aria-hidden="true" />
                 </div>
               </button>
             </div>
@@ -1779,7 +1825,7 @@ onBeforeUnmount(() => {
                   :options="prototypeStateOptions"
                   :active-id="activePrototypeStateId"
                   :count-for-state="(stateId) => annotationCountByState(currentScreen, stateId)"
-                  :highlighted-ids="activeScreenHighlightedStateIds"
+                  :highlighted-colors="activeScreenHighlightedStateColors"
                   @change="setPrototypeState(currentScreen, $event)"
                 />
                 <div :class="screen.platform === 'pc' ? 'desktop-frame' : 'phone-screen'">
@@ -2053,6 +2099,26 @@ onBeforeUnmount(() => {
             <input v-model="pageDescriptionEditor.highlighted" type="checkbox" />
             <span>重点标注当前状态页</span>
           </label>
+          <section v-if="pageDescriptionEditor.highlighted" class="page-description-highlight-colors">
+            <span>标记颜色</span>
+            <div class="page-description-highlight-swatches">
+              <button
+                v-for="color in [...presetHighlightColors, ...customHighlightColors]"
+                :key="color"
+                type="button"
+                :class="{ active: pageDescriptionEditor.highlightColor === color }"
+                :style="{ backgroundColor: color }"
+                :aria-label="`选择颜色 ${color}`"
+                :title="color"
+                @click="selectHighlightColor(color)"
+              />
+            </div>
+            <div class="page-description-custom-color">
+              <input v-model="customHighlightColorInput" type="text" maxlength="7" placeholder="#12b981" @keydown.enter.prevent="addCustomHighlightColor" />
+              <button type="button" @click="addCustomHighlightColor">新增</button>
+            </div>
+            <small v-if="customHighlightColorNotice">{{ customHighlightColorNotice }}</small>
+          </section>
           <label>
             <span>{{ t('pageDescriptionPurpose') }}</span>
             <textarea v-model="pageDescriptionEditor.purpose" :placeholder="t('pageDescriptionPurposePlaceholder')" />
