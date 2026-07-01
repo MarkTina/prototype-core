@@ -25,11 +25,11 @@ const emit = defineEmits<{
       @click="emit('change', item.id)"
     >
       <span />
-      <span class="min-w-0 flex-1 truncate text-left">{{ item.label }}</span>
-      <span class="ml-auto flex items-center gap-2">
+      {{ item.label }}
+      <div class="ml-auto flex items-center gap-2">
         <b v-if="countForState?.(item.id)" class="prototype-state-annotation-count">{{ countForState(item.id) }}</b>
-        <span v-if="highlightedIds?.has(item.id)" class="prototype-state-highlight-dot" aria-hidden="true" />
-      </span>
+        <div v-if="highlightedIds?.has(item.id)" class="prototype-state-highlight-dot" aria-hidden="true" />
+      </div>
     </button>
   </aside>
 </template>

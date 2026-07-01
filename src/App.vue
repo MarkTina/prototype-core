@@ -1658,10 +1658,10 @@ onBeforeUnmount(() => {
                 >{{ screen.platform === 'pc' ? 'P' : 'M' }}</span>
                 <component :is="screen.icon" class="h-4 w-4" />
                 <span class="flex-1 text-left">{{ screen.code }} {{ screen.title }}</span>
-                <span class="ml-auto flex items-center gap-2">
+                <div class="ml-auto flex items-center gap-2">
                   <span v-if="annotationCountByScreen(screen.id)" class="annotation-nav-badge">{{ annotationCountByScreen(screen.id) }}</span>
                   <span v-if="isScreenHighlighted(screen.id)" class="screen-highlight-dot" aria-hidden="true" />
-                </span>
+                </div>
               </button>
             </div>
             <svg v-if="interactiveSideNavCanScrollUp" class="side-nav-scroll-hint-top" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
