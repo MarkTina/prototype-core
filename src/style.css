@@ -1712,11 +1712,11 @@
   }
 
   .screen-highlight-dot {
-    @apply ml-2 h-2 w-2 shrink-0 rounded-full bg-danger;
+    @apply ml-auto h-4 w-[3px] shrink-0 self-center rounded-full bg-danger;
   }
 
   .prototype-state-highlight-dot {
-    @apply ml-auto h-2 w-2 shrink-0 rounded-full bg-danger;
+    @apply ml-auto h-4 w-[3px] shrink-0 self-center rounded-full bg-danger;
   }
 
   .interactive-side-nav {
