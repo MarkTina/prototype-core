@@ -939,7 +939,21 @@ function desktopDisplayWidth() {
 
 function screenShellStyle(screen: DisplayScreen) {
   const baseStyle = effectiveMode.value === 'flow' ? flowNodeStyle(screen) : {}
-  if (screen.platform !== 'pc') return baseStyle
+  if (screen.platform !== 'pc') {
+    if (!presentationMode.value) return baseStyle
+    const width = Math.min(
+      overviewPhoneWidth,
+      viewportWidth.value,
+      Math.max(0, viewportHeight.value - 48) * overviewPhoneWidth / overviewPhoneHeight,
+    )
+    const height = width * overviewPhoneHeight / overviewPhoneWidth
+    return {
+      ...baseStyle,
+      '--presentation-phone-width': `${width}px`,
+      '--presentation-phone-height': `${height}px`,
+      '--presentation-phone-scale': String(width / overviewPhoneWidth),
+    }
+  }
   const width = Math.max(1, desktopDisplayWidth())
   const height = width * desktopBaseHeight / desktopBaseWidth
   return {

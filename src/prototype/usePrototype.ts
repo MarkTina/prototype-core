@@ -882,6 +882,8 @@ function cancelAnnotationDraft() {
 
 function handleAnnotationCanvasClick(event: MouseEvent, screenId: string) {
   if (!isPlacingAnnotation.value) return
+  event.preventDefault()
+  event.stopPropagation()
   const target = event.currentTarget as HTMLElement
   const rect = target.getBoundingClientRect()
   const layer = target.querySelector<HTMLElement>('.annotation-layer')

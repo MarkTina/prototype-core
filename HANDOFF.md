@@ -25,6 +25,8 @@
 - Gitee 与 OSS 配置已改为运行时注入；这些浏览器端能力只适用于原型，不构成生产级秘密保护。
 - npm 公共发布已可用；Trusted Publisher 必须与 `MarkTina/prototype-core` 和 `publish.yml` 精确绑定。
 - 页面描述支持 `highlighted` 与可选 `highlightColor` 重点标注；导航和状态页切换以名称前的彩色书签展示，旧数据默认使用红色。自定义颜色列表按项目缓存在浏览器本地。
+- 移动端演示模式保持 `393×852` 基准画布并按视口整体等比缩放，不会因演示尺寸变化触发业务页面响应式重排。
+- 添加注释点时，页面内所有内容统一使用十字光标，点击交互组件只创建标注并阻止其业务操作；取消添加后恢复正常交互。
 
 ## 演进方向
 
@@ -46,8 +48,8 @@
 - 2026-07-01：重点标注颜色随页面描述协作数据保存，自定义色板仅按项目缓存在本地；导航使用名称前的彩色书签，避免与右侧注释数量争抢空间。
 
 <!-- fresh-meta
-last-updated: 2026-07-01
-trigger-reason: 页面描述新增 highlighted 重点标注能力
+last-updated: 2026-07-02
+trigger-reason: 修复演示模式比例与交互组件标注落点
 updated-by: handoff-maintainer
-next-review: 当页面描述字段或协作 manifest 结构变化时
+next-review: 当演示模式缩放或标注交互策略变化时
 -->

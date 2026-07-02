@@ -2219,6 +2219,10 @@
     @apply cursor-crosshair;
   }
 
+  .screen-content.is-placing-annotation * {
+    cursor: crosshair !important;
+  }
+
   .screen-content::-webkit-scrollbar {
     display: none;
   }
@@ -3971,10 +3975,16 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 100%;
+    width: var(--presentation-phone-width, 393px);
+    height: var(--presentation-phone-height, 852px);
     max-width: none;
     min-height: 0;
     margin: 0;
+  }
+
+  .presentation-mode .phone-shell .prototype-preview-scaler {
+    width: var(--presentation-phone-width, 393px);
+    height: var(--presentation-phone-height, 852px);
   }
 
   .presentation-mode .desktop-shell {
@@ -3986,9 +3996,11 @@
   }
 
   .presentation-mode .phone-screen {
-    width: min(100vw, calc((100vh - 48px) * 393 / 852));
-    height: min(100vh - 48px, calc(100vw * 852 / 393));
-    max-height: calc(100vh - 48px);
+    width: 393px;
+    height: 852px;
+    max-height: none;
+    transform: scale(var(--presentation-phone-scale, 1));
+    transform-origin: left top;
   }
 
   /* 全图模式：演示模式下自动换列、占满视口 */
