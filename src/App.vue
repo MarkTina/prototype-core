@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Keyboard } from '@lucide/vue'
+import { BookOpen, Keyboard } from '@lucide/vue'
 import ScreenRenderer from './screens/ScreenRenderer.vue'
 import TabBar from './components/phone/TabBar.vue'
 import PrototypeStateSwitcher from './components/phone/PrototypeStateSwitcher.vue'
 import FlowEditor from './components/flow-editor/FlowEditor.vue'
 import BugReportPage from './tools/bugs/BugReportPage.vue'
+import PrototypeCoreHelpPage from './help/PrototypeCoreHelpPage.vue'
 import { usePrototypeContext, useFlowEditorContext } from './prototype/usePrototype'
 import { useProductBugs } from './tools/bugs/useProductBugs'
 import type { DisplayScreen, PrototypeAnnotation } from './types/prototype'
@@ -392,7 +393,7 @@ const gitHistory = __GIT_HISTORY__
 const showUpdateHistory = ref(false)
 const expandedHistoryHash = ref(gitHistory[0]?.hash ?? '')
 const latestUpdateTime = computed(() => gitHistory[0]?.date ?? '暂无记录')
-const appRoute = ref<'prototype' | 'bugs'>('prototype')
+const appRoute = ref<'prototype' | 'bugs' | 'help'>('prototype')
 const interactiveSideNavRef = ref<HTMLElement | null>(null)
 const interactiveSideNavCanScrollUp = ref(false)
 const interactiveSideNavCanScrollDown = ref(false)
@@ -1165,6 +1166,10 @@ const shortcutByKey = new Map(
 )
 
 function cancelCurrentShortcutOperation() {
+  if (appRoute.value === 'help') {
+    closeHelpPage()
+    return
+  }
   if (appRoute.value === 'bugs') {
     closeBugPage()
     return
@@ -1368,7 +1373,9 @@ function dismissUpdatePrompt() {
 }
 
 function syncAppRoute() {
-  appRoute.value = window.location.hash === '#/bugs' ? 'bugs' : 'prototype'
+  if (window.location.hash === '#/bugs') appRoute.value = 'bugs'
+  else if (window.location.hash === '#/prototype-core-help') appRoute.value = 'help'
+  else appRoute.value = 'prototype'
 }
 
 function openBugPage() {
@@ -1376,6 +1383,14 @@ function openBugPage() {
 }
 
 function closeBugPage() {
+  window.location.hash = '#/prototype'
+}
+
+function openHelpPage() {
+  window.location.hash = '#/prototype-core-help'
+}
+
+function closeHelpPage() {
   window.location.hash = '#/prototype'
 }
 
@@ -1516,11 +1531,12 @@ onBeforeUnmount(() => {
     class="min-h-screen bg-canvas text-ink transition-[padding] duration-200"
     :class="[
       isMobilePureInteractive ? 'mobile-pure-interactive' : '',
-      presentationMode ? 'presentation-mode' : (!isMobilePureInteractive && (showUpdatePrompt ? 'has-update-banner pt-[120px]' : 'pt-[68px]')),
+      appRoute === 'help' ? 'prototype-help-route' : presentationMode ? 'presentation-mode' : (!isMobilePureInteractive && (showUpdatePrompt ? 'has-update-banner pt-[120px]' : 'pt-[68px]')),
     ]"
     :style="themeStyle"
   >
-    <section v-if="!isAuthenticated" class="flex min-h-screen items-center justify-center px-5 py-10">
+    <PrototypeCoreHelpPage v-if="appRoute === 'help'" @close="closeHelpPage" />
+    <section v-else-if="!isAuthenticated" class="flex min-h-screen items-center justify-center px-5 py-10">
       <form
         class="w-full max-w-sm rounded-[28px] border border-line bg-panel p-6 text-center shadow-soft"
         @submit.prevent="handleAuthSubmit"
@@ -1599,7 +1615,7 @@ onBeforeUnmount(() => {
           <button class="mode-btn" :class="{ active: lang === 'zh' }" @click="lang = 'zh'">中文</button>
           <button class="mode-btn" :class="{ active: lang === 'en' }" @click="lang = 'en'">English</button>
         </div>
-        <div class="top-control-group relative flex rounded-full bg-panel ring-1 ring-line">
+          <div class="top-control-group relative flex rounded-full bg-panel ring-1 ring-line">
           <button class="mode-btn flex items-center gap-2" :class="{ active: showThemePanel }" @click="showThemePanel = !showThemePanel">
             <span class="theme-swatch" :style="{ '--swatch-color': activeThemeColors.ocean }" />
             {{ t('themeButton') }}
@@ -1651,6 +1667,15 @@ onBeforeUnmount(() => {
               </label>
             </div>
           </div>
+          <button
+            class="mode-btn help-nav-btn rounded-full bg-panel ring-1 ring-line"
+            type="button"
+            aria-label="打开操作手册"
+            title="操作手册"
+            @click="openHelpPage"
+          >
+            <BookOpen class="h-4 w-4" />
+          </button>
         </div>
       </div>
     </div>

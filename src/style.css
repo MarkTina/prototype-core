@@ -91,6 +91,15 @@
     @apply sticky top-0 z-40 flex min-h-[52px] flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-line bg-canvas/85 px-5 py-3 backdrop-blur-xl;
   }
 
+  .prototype-help-route {
+    padding-top: 0 !important;
+  }
+
+  .help-nav-btn {
+    @apply h-9 w-9 shrink-0 p-0;
+    margin-left: 4px;
+  }
+
   .apple-hero-copy {
     @apply mx-auto max-w-3xl py-6 text-center;
   }
