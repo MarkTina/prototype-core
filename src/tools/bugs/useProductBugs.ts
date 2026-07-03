@@ -1,7 +1,6 @@
 import { computed, ref } from 'vue'
 import { bugRemoteEnabled, loadRemoteBugs, updateRemoteBugs } from './bugClient'
-import { collaborationCacheKey } from '../../prototype/collaborationPolicy'
-import { getCollaborationContext } from '../../prototype/collaborationStore'
+import { migrateFileCollaborationCache, readCollaborationCache, writeCollaborationCache } from '../../prototype/collaborationStore'
 import type { BugOwnerRole, BugSeverity, BugSourceSide, BugStatus, BugType, ProductBug, ProductBugAttachment } from './types'
 
 export const bugTypes: BugType[] = ['功能异常', 'UI/文案', '流程阻塞', '数据/报告', '设备/蓝牙', '性能/稳定性', '兼容性', '其他']
@@ -16,22 +15,6 @@ const bugRemoteReady = ref(bugRemoteEnabled)
 const bugSyncStatus = ref<'idle' | 'loading' | 'success' | 'error'>(bugRemoteEnabled ? 'loading' : 'idle')
 const bugSyncMessage = ref('')
 let initialized = false
-
-function getStorage() {
-  try {
-    return typeof window === 'undefined' ? null : window.localStorage
-  } catch {
-    return null
-  }
-}
-
-function bugStorageKey() {
-  const context = getCollaborationContext()
-  return collaborationCacheKey(
-    [context.provider || 'local', context.owner || 'none', context.repo || 'none', context.remoteBranch, context.projectId, context.branchKey],
-    'bugs',
-  )
-}
 
 function isBugType(value: unknown): value is BugType {
   return typeof value === 'string' && bugTypes.includes(value as BugType)
@@ -118,7 +101,8 @@ function normalizeBugs(value: unknown) {
 }
 
 function saveLocalBugs(next: ProductBug[]) {
-  getStorage()?.setItem(bugStorageKey(), JSON.stringify(next))
+  const cached = readCollaborationCache<ProductBug[]>('bugs')
+  writeCollaborationCache('bugs', next, cached?.revision ?? null, cached?.lastRemoteSyncAt ?? null, 'pending')
 }
 
 function setBugSync(status: typeof bugSyncStatus.value, message = '') {
@@ -127,32 +111,23 @@ function setBugSync(status: typeof bugSyncStatus.value, message = '') {
 }
 
 async function refreshBugs() {
+  migrateFileCollaborationCache<ProductBug[]>('bugs')
   if (bugRemoteReady.value) {
     try {
       setBugSync('loading', '正在同步 Gitee Bug 数据')
       const remote = await loadRemoteBugs()
       bugs.value = normalizeBugs(remote?.value ?? [])
-      saveLocalBugs(bugs.value)
+      writeCollaborationCache('bugs', bugs.value, remote?.sha ?? null, new Date().toISOString(), 'synced')
       setBugSync('success', '已同步 Gitee Bug 数据')
       return
     } catch (error) {
-      bugRemoteReady.value = false
+      const cached = readCollaborationCache<ProductBug[]>('bugs')
+      if (cached) writeCollaborationCache('bugs', cached.value, cached.revision, cached.lastRemoteSyncAt, 'stale', error instanceof Error ? error.message : 'Gitee Bug 数据同步失败')
       setBugSync('error', error instanceof Error ? error.message : 'Gitee Bug 数据同步失败，已切换本地兜底')
     }
   }
 
-  const storage = getStorage()
-  const stored = storage?.getItem(bugStorageKey())
-  if (stored) {
-    try {
-      bugs.value = normalizeBugs(JSON.parse(stored))
-    } catch {
-      storage?.removeItem(bugStorageKey())
-      bugs.value = []
-    }
-  } else {
-    bugs.value = []
-  }
+  bugs.value = normalizeBugs(readCollaborationCache<ProductBug[]>('bugs')?.value ?? [])
   if (!bugSyncMessage.value) setBugSync('idle', '当前使用本地 Bug 数据')
 }
 
@@ -177,8 +152,8 @@ async function persistBugs(operatorName: string, operation: string, transform: (
     try {
       setBugSync('loading', '正在提交 Gitee Bug 数据')
       const saved = await updateRemoteBugs(operatorName, operation, (remoteValue) => normalizeBugs(transform(normalizeBugs(remoteValue))))
-      bugs.value = normalizeBugs(saved ?? [])
-      saveLocalBugs(bugs.value)
+      bugs.value = normalizeBugs(saved?.value ?? [])
+      writeCollaborationCache('bugs', bugs.value, saved?.sha ?? null, new Date().toISOString(), 'synced')
       setBugSync('success', 'Bug 数据已提交')
       return true
     } catch (error) {

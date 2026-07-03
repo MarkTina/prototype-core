@@ -317,6 +317,14 @@ projects/<projectId>/branches/<branchKey>/
 
 标准动作：读取当前远端 revision → 只修改目标 scope → 写 scope 文件 → 合并 manifest → 精确回读 scope 与 manifest。冲突时刷新后重新判断，不覆盖其他人的更新。
 
+AI 直接补充消费者 `page-descriptions.json` 后，不得只等待缓存自行失效。在已挂载且启用 Gitee 协作的消费者页面中执行：
+
+```js
+await window.__PROTOTYPE_CORE__.syncPageDescriptionsFromJson()
+```
+
+该指令会重新读取 JSON，逐 scope 写入 Gitee、合并 manifest、精确回读并刷新当前上下文缓存。JSON 中未出现的远端 scope 不会被删除；任一 scope 或 manifest 失败时指令会报错，不得宣称同步完成。
+
 ### 7.4 流程
 
 ```text
@@ -419,8 +427,9 @@ export const runtimeConfig: PrototypeRuntimeConfig = {
 ```
 
 - 本地种子：随消费者构建发布，供新浏览器和离线场景兜底。
-- localStorage：按域名和协作上下文隔离，可能比新部署种子旧。
+- localStorage：按域名和协作上下文隔离；页面描述与注释按 scope 保存独立 revision，流程与 Bug 按整文件保存。缓存状态区分 `synced/pending/stale/error`。
 - Gitee：远端协作启用后的团队真值。
+- JSON 是初始化种子和 AI 编辑载体，不是启用 Gitee 后的第二真值；AI 修改页面描述 JSON 后必须执行同步指令并以远端回读为完成依据。
 - 测试服与正式服显示不一致时，依次比较构建版本、静态种子、`runtimeConfig`、Gitee scope 和各域名缓存。
 - 汇总 manifest 正确不代表每个 scope 文件都存在；关键修改必须逐文件回读。
 

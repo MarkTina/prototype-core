@@ -1,4 +1,4 @@
-import type { CollaborationCacheSnapshot, CollaborationDataKind, DataSource } from '../types/prototype'
+import type { CollaborationCacheEntry, CollaborationCacheSnapshot, CollaborationDataKind, DataSource, ScopedCollaborationCacheSnapshot } from '../types/prototype'
 
 export function collaborationBranchKey(branch: string) {
   if (branch === 'main') return 'main'
@@ -17,6 +17,16 @@ export function collaborationCacheKey(scopeParts: string[], kind: CollaborationD
 
 export function selectLocalFallback<T>(snapshot: CollaborationCacheSnapshot<T> | null, seed: T): { value: T; source: DataSource } {
   return snapshot ? { value: snapshot.value, source: 'local-cache' } : { value: seed, source: 'local-seed' }
+}
+
+export function upsertScopedCache<T>(snapshot: ScopedCollaborationCacheSnapshot<T>, scopeId: string, entry: CollaborationCacheEntry<T>) {
+  return { ...snapshot, scopes: { ...snapshot.scopes, [scopeId]: entry } }
+}
+
+export function withoutScopedCache<T>(snapshot: ScopedCollaborationCacheSnapshot<T>, scopeId: string) {
+  const scopes = { ...snapshot.scopes }
+  delete scopes[scopeId]
+  return { ...snapshot, scopes }
 }
 
 export function shouldDeferRemoteRefresh(fromPolling: boolean, editing: boolean) {

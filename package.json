@@ -1,6 +1,6 @@
 {
   "name": "@marktowin/prototype-core",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "面向移动端与 PC Web 原型的 Vue 评审、流程和协作内核",
   "license": "MIT",
   "type": "module",

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { collaborationBranchKey, collaborationCacheKey, createSerialQueue, remoteInitializationDecision, selectGiteeFileResponse, selectLocalFallback, shouldDeferRemoteRefresh } from '../src/prototype/collaborationPolicy.ts'
+import { collaborationBranchKey, collaborationCacheKey, createSerialQueue, remoteInitializationDecision, selectGiteeFileResponse, selectLocalFallback, shouldDeferRemoteRefresh, upsertScopedCache, withoutScopedCache } from '../src/prototype/collaborationPolicy.ts'
 
 test('主分支使用稳定目录，功能分支不会互相碰撞', () => {
   assert.equal(collaborationBranchKey('main'), 'main')
@@ -18,7 +18,7 @@ test('缓存键按代码分支和数据类型隔离', () => {
 
 test('本地回退优先使用缓存，无缓存才使用种子', () => {
   assert.deepEqual(selectLocalFallback(null, ['seed']), { value: ['seed'], source: 'local-seed' })
-  assert.deepEqual(selectLocalFallback({ schemaVersion: 2, value: ['cache'], revision: null, cachedAt: '', lastRemoteSyncAt: null }, ['seed']), {
+  assert.deepEqual(selectLocalFallback({ schemaVersion: 3, value: ['cache'], revision: null, cachedAt: '', lastRemoteSyncAt: null, status: 'synced' }, ['seed']), {
     value: ['cache'],
     source: 'local-cache',
   })
@@ -28,6 +28,17 @@ test('轮询在编辑期间延迟覆盖', () => {
   assert.equal(shouldDeferRemoteRefresh(true, true), true)
   assert.equal(shouldDeferRemoteRefresh(false, true), false)
   assert.equal(shouldDeferRemoteRefresh(true, false), false)
+})
+
+test('页面描述缓存按 scope 保存独立 revision，并可精确删除', () => {
+  const empty = { schemaVersion: 3 as const, scopes: {} }
+  const home = { value: { screenId: 'home' }, revision: 'sha-home', cachedAt: '', lastRemoteSyncAt: '', status: 'synced' as const }
+  const detail = { value: { screenId: 'detail', stateId: 'empty' }, revision: 'sha-detail', cachedAt: '', lastRemoteSyncAt: null, status: 'pending' as const }
+  const snapshot = upsertScopedCache(upsertScopedCache(empty, 'home', home), 'detail__empty', detail)
+  assert.equal(snapshot.scopes.home.revision, 'sha-home')
+  assert.equal(snapshot.scopes.detail__empty.revision, 'sha-detail')
+  assert.equal(snapshot.scopes.detail__empty.status, 'pending')
+  assert.equal(withoutScopedCache(snapshot, 'home').scopes.home, undefined)
 })
 
 test('同一资源的并发任务按顺序执行', async () => {

@@ -118,6 +118,6 @@ export async function updateRemoteBugs(
     const remote = await loadCurrentRemote()
     const next = transform(Array.isArray(remote?.value) ? (remote.value as ProductBug[]) : [])
     await writeGiteeFile(bugDataPath(), next, remote?.legacy ? null : remote?.sha ?? null, commitMessage(operatorName, operation))
-    return next
+    return loadRemoteBugs()
   })
 }

@@ -23,7 +23,17 @@ import {
   updateRemoteScreenAnnotations,
   type AnnotationOperation,
 } from './annotationClient'
-import { getCollaborationContext, readCollaborationCache, writeCollaborationCache } from './collaborationStore'
+import {
+  getCollaborationContext,
+  migrateFileCollaborationCache,
+  readCollaborationCache,
+  readLegacyCollaborationCache,
+  readScopedCollaborationCache,
+  removeScopedCollaborationCache,
+  replaceScopedCollaborationCache,
+  writeCollaborationCache,
+  writeScopedCollaborationCache,
+} from './collaborationStore'
 import { selectLocalFallback, shouldDeferRemoteRefresh } from './collaborationPolicy'
 import { getPrototypeProduct, getPrototypeRuntime } from '../core/productAdapter'
 import { setActivePrototypeContext } from '../core/contextBridge'
@@ -38,6 +48,7 @@ import type {
   Lang,
   MainFlow,
   Mode,
+  PageDescriptionJsonSyncResult,
   PrototypeAnnotation,
   PrototypePageDescription,
   PrototypeStateOption,
@@ -534,6 +545,7 @@ function normalizePageDescriptions(value: unknown): PrototypePageDescription[] {
       screenId: raw.screenId,
       stateId: normalizePrototypeStateId(raw.screenId, raw.stateId),
       highlighted: raw.highlighted === true,
+      highlightColor: typeof raw.highlightColor === 'string' ? raw.highlightColor : undefined,
       purpose: String(raw.purpose ?? ''),
       structure: String(raw.structure ?? ''),
       features: String(raw.features ?? ''),
@@ -553,7 +565,7 @@ function normalizePageDescriptions(value: unknown): PrototypePageDescription[] {
 async function loadLocalJson<T>(fileName: string, fallback: T): Promise<T> {
   try {
     const baseUrl = getPrototypeRuntime().baseUrl ?? '/'
-    const response = await fetch(`${baseUrl.replace(/\/?$/, '/')}${fileName}`)
+    const response = await fetch(`${baseUrl.replace(/\/?$/, '/')}${fileName}`, { cache: 'no-store' })
     if (!response.ok) return fallback
     return (await response.json()) as T
   } catch {
@@ -562,6 +574,7 @@ async function loadLocalJson<T>(fileName: string, fallback: T): Promise<T> {
 }
 
 async function initializePrototype() {
+  if (typeof window !== 'undefined') window.__PROTOTYPE_CORE__ = { syncPageDescriptionsFromJson }
   const savedAuthor = storage()?.getItem(ANNOTATION_AUTHOR_STORAGE_KEY)
   if (savedAuthor) annotationAuthorName.value = savedAuthor
   const savedIntervalRaw = storage()?.getItem(ANNOTATION_POLLING_INTERVAL_STORAGE_KEY)
@@ -591,11 +604,36 @@ async function initializePrototype() {
     pageDescriptions: normalizePageDescriptions(localDescriptions),
     flows: Array.isArray(flowData.flows) && flowData.flows.length ? flowData.flows : productFlows.flows,
   }
-  const annotationCache = readCollaborationCache<PrototypeAnnotation[]>('annotations')
-  const descriptionCache = readCollaborationCache<PrototypePageDescription[]>('pageDescriptions')
-  const flowCache = readCollaborationCache<MainFlow[]>('flows')
-  const annotationFallback = selectLocalFallback(annotationCache, seeds.annotations)
-  const descriptionFallback = selectLocalFallback(descriptionCache, seeds.pageDescriptions)
+  const legacyAnnotations = readLegacyCollaborationCache<PrototypeAnnotation[]>('annotations')
+  const legacyDescriptions = readLegacyCollaborationCache<PrototypePageDescription[]>('pageDescriptions')
+  if (legacyAnnotations) {
+    const scopes: ReturnType<typeof readScopedCollaborationCache<PrototypeAnnotation[]>>['scopes'] = {}
+    normalizeAnnotations(legacyAnnotations.value).forEach((item) => {
+      const id = annotationScopeId(item.screenId, item.stateId)
+      const entry = scopes[id] ?? { value: [], revision: null, cachedAt: new Date().toISOString(), lastRemoteSyncAt: null, status: 'stale' as const }
+      entry.value.push(item)
+      scopes[id] = entry
+    })
+    replaceScopedCollaborationCache('annotations', scopes)
+  }
+  if (legacyDescriptions) {
+    const scopes: ReturnType<typeof readScopedCollaborationCache<PrototypePageDescription>>['scopes'] = {}
+    normalizePageDescriptions(legacyDescriptions.value).forEach((item) => {
+      scopes[annotationScopeId(item.screenId, item.stateId)] = { value: item, revision: null, cachedAt: new Date().toISOString(), lastRemoteSyncAt: null, status: 'stale' }
+    })
+    replaceScopedCollaborationCache('pageDescriptions', scopes)
+  }
+  const scopedAnnotations = readScopedCollaborationCache<PrototypeAnnotation[]>('annotations')
+  const scopedDescriptions = readScopedCollaborationCache<PrototypePageDescription>('pageDescriptions')
+  const cachedAnnotations = Object.values(scopedAnnotations.scopes).flatMap((entry) => entry.value)
+  const cachedDescriptions = Object.values(scopedDescriptions.scopes).map((entry) => entry.value)
+  const annotationCachedScopeIds = new Set(Object.keys(scopedAnnotations.scopes))
+  const descriptionCachedScopeIds = new Set(Object.keys(scopedDescriptions.scopes))
+  const mergedCachedAnnotations = [...seeds.annotations.filter((item) => !annotationCachedScopeIds.has(annotationScopeId(item.screenId, item.stateId))), ...cachedAnnotations]
+  const mergedCachedDescriptions = [...seeds.pageDescriptions.filter((item) => !descriptionCachedScopeIds.has(annotationScopeId(item.screenId, item.stateId))), ...cachedDescriptions]
+  const flowCache = migrateFileCollaborationCache<MainFlow[]>('flows')
+  const annotationFallback = annotationCachedScopeIds.size ? { value: mergedCachedAnnotations, source: 'local-cache' as const } : { value: seeds.annotations, source: 'local-seed' as const }
+  const descriptionFallback = descriptionCachedScopeIds.size ? { value: mergedCachedDescriptions, source: 'local-cache' as const } : { value: seeds.pageDescriptions, source: 'local-seed' as const }
   const flowFallback = selectLocalFallback(flowCache, seeds.flows)
   annotations.value = annotationFallback.value
   pageDescriptions.value = descriptionFallback.value
@@ -668,8 +706,8 @@ async function loadScreenAnnotationsFromRemote(screenId: string, stateId = norma
   const next = normalizeAnnotations(remote.value).map((item) => ({ ...item, screenId, stateId }))
   const merged = [...annotations.value.filter((item) => annotationScopeId(item.screenId, item.stateId) !== annotationScopeId(screenId, stateId)), ...next]
   const syncedAt = new Date().toISOString()
-  writeCollaborationCache('annotations', merged, remote.sha, syncedAt)
-  annotations.value = readCollaborationCache<PrototypeAnnotation[]>('annotations')?.value ?? merged
+  writeScopedCollaborationCache('annotations', annotationScopeId(screenId, stateId), next, remote.sha, syncedAt, 'synced')
+  annotations.value = merged
   updateManifestCount(screenId, stateId, next.length)
   setCollaborationSource('annotations', 'gitee', 'success', remote.legacy ? '已读取主分支旧目录' : '', syncedAt)
   return true
@@ -685,8 +723,8 @@ async function loadCurrentPageDescriptionFromRemote() {
   if (!value) return
   const merged = [...pageDescriptions.value.filter((item) => annotationScopeId(item.screenId, item.stateId) !== scopeId), value]
   const syncedAt = new Date().toISOString()
-  writeCollaborationCache('pageDescriptions', merged, remote.sha, syncedAt)
-  pageDescriptions.value = readCollaborationCache<PrototypePageDescription[]>('pageDescriptions')?.value ?? merged
+  writeScopedCollaborationCache('pageDescriptions', scopeId, value, remote.sha, syncedAt, 'synced')
+  pageDescriptions.value = merged
   updatePageDescriptionManifest(screenId, stateId, 1, value.highlighted, value.highlightColor)
   if (scopeId === currentAnnotationScopeId()) syncPageDescriptionEditor()
   setCollaborationSource('pageDescriptions', 'gitee', 'success', remote.legacy ? '已读取主分支旧目录' : '', syncedAt)
@@ -706,11 +744,11 @@ async function refreshPrototypeAnnotations(fromPolling = false) {
     annotationManifest.value = manifest?.value ?? annotationManifest.value
     const loaded = await loadScreenAnnotationsFromRemote(currentScreen.value, activePrototypeStateId.value)
     const currentScopeId = annotationScopeId(currentScreen.value, activePrototypeStateId.value)
-    if (!loaded && manifest && !manifest.value.scopes?.[currentScopeId]) {
+    if (!loaded && !manifest?.value.scopes?.[currentScopeId]) {
       const merged = annotations.value.filter((item) => annotationScopeId(item.screenId, item.stateId) !== currentScopeId)
       const syncedAt = new Date().toISOString()
-      writeCollaborationCache('annotations', merged, manifest.sha, syncedAt)
-      annotations.value = readCollaborationCache<PrototypeAnnotation[]>('annotations')?.value ?? merged
+      removeScopedCollaborationCache('annotations', currentScopeId)
+      annotations.value = merged
       setCollaborationSource('annotations', 'gitee', 'success', '', syncedAt)
     } else if (!loaded) {
       throw new Error('Gitee 当前注释文件不存在')
@@ -718,6 +756,9 @@ async function refreshPrototypeAnnotations(fromPolling = false) {
     annotationSyncStatus.value = 'success'
     annotationSyncLabel.value = '注释已同步'
   } catch (error) {
+    const scopeId = currentAnnotationScopeId()
+    const cached = readScopedCollaborationCache<PrototypeAnnotation[]>('annotations').scopes[scopeId]
+    if (cached) writeScopedCollaborationCache('annotations', scopeId, cached.value, cached.revision, cached.lastRemoteSyncAt, 'stale', error instanceof Error ? error.message : '注释同步失败')
     annotationSyncStatus.value = 'error'
     annotationSyncLabel.value = '注释同步失败'
     setCollaborationSource('annotations', collaborationSources.value.annotations.source, 'error', error instanceof Error ? error.message : '注释同步失败')
@@ -736,10 +777,19 @@ async function refreshPageDescriptions(fromPolling = false) {
     const manifest = await loadRemotePageDescriptionManifest()
     pageDescriptionManifest.value = manifest?.value ?? pageDescriptionManifest.value
     const loaded = await loadCurrentPageDescriptionFromRemote()
-    if (!loaded) throw new Error('Gitee 当前页面描述不存在')
+    const currentScopeId = currentAnnotationScopeId()
+    if (!loaded && !manifest?.value.scopes?.[currentScopeId]) {
+      removeScopedCollaborationCache('pageDescriptions', currentScopeId)
+      pageDescriptions.value = pageDescriptions.value.filter((item) => annotationScopeId(item.screenId, item.stateId) !== currentScopeId)
+      syncPageDescriptionEditor()
+      setCollaborationSource('pageDescriptions', 'gitee', 'success', '', new Date().toISOString())
+    } else if (!loaded) throw new Error('Gitee 当前页面描述不存在')
     annotationSyncStatus.value = 'success'
     annotationSyncLabel.value = '页面说明已同步'
   } catch (error) {
+    const scopeId = currentAnnotationScopeId()
+    const cached = readScopedCollaborationCache<PrototypePageDescription>('pageDescriptions').scopes[scopeId]
+    if (cached) writeScopedCollaborationCache('pageDescriptions', scopeId, cached.value, cached.revision, cached.lastRemoteSyncAt, 'stale', error instanceof Error ? error.message : '页面描述同步失败')
     annotationSyncStatus.value = 'error'
     annotationSyncLabel.value = '页面说明同步失败'
     setCollaborationSource('pageDescriptions', collaborationSources.value.pageDescriptions.source, 'error', error instanceof Error ? error.message : '页面描述同步失败')
@@ -763,11 +813,13 @@ async function refreshFlows(fromPolling = false) {
     const flows = Array.isArray(remote?.value?.flows) ? remote.value.flows : null
     if (!remote || !flows) throw new Error('Gitee 流程文件不存在')
     const syncedAt = new Date().toISOString()
-    writeCollaborationCache('flows', flows, remote.sha, syncedAt)
+    writeCollaborationCache('flows', flows, remote.sha, syncedAt, 'synced')
     mainFlows.value = readCollaborationCache<MainFlow[]>('flows')?.value ?? flows
     if (!mainFlows.value.some((flow) => flow.id === selectedFlowId.value)) selectedFlowId.value = mainFlows.value[0]?.id ?? ''
     setCollaborationSource('flows', 'gitee', 'success', '', syncedAt)
   } catch (error) {
+    const cached = readCollaborationCache<MainFlow[]>('flows')
+    if (cached) writeCollaborationCache('flows', cached.value, cached.revision, cached.lastRemoteSyncAt, 'stale', error instanceof Error ? error.message : '流程同步失败')
     setCollaborationSource('flows', collaborationSources.value.flows.source, 'error', error instanceof Error ? error.message : '流程同步失败')
   }
 }
@@ -909,10 +961,18 @@ async function submitRemoteAnnotationChange(screenId: string, stateId: string | 
     if (!saved) return null
     const values = normalizeAnnotations(saved.value).map((item) => ({ ...item, screenId, stateId }))
     updateManifestCount(screenId, stateId, values.length)
-    if (annotationManifest.value) await saveRemoteAnnotationManifest(annotationManifest.value, annotationAuthorName.value.trim() || '未署名', annotationScopeId(screenId, stateId))
     const syncedAt = new Date().toISOString()
     const merged = [...annotations.value.filter((item) => annotationScopeId(item.screenId, item.stateId) !== annotationScopeId(screenId, stateId)), ...values]
-    writeCollaborationCache('annotations', merged, saved.sha, syncedAt)
+    writeScopedCollaborationCache('annotations', annotationScopeId(screenId, stateId), values, saved.sha, syncedAt, 'synced')
+    annotations.value = merged
+    if (annotationManifest.value) {
+      try {
+        await saveRemoteAnnotationManifest(annotationManifest.value, annotationAuthorName.value.trim() || '未署名', annotationScopeId(screenId, stateId))
+      } catch (error) {
+        setCollaborationSource('annotations', 'gitee', 'error', `注释已保存，但索引同步失败：${error instanceof Error ? error.message : '未知错误'}`, syncedAt)
+        return values
+      }
+    }
     setCollaborationSource('annotations', 'gitee', 'success', '', syncedAt)
     return values
   } catch (error) {
@@ -944,7 +1004,7 @@ async function saveAnnotationDraft() {
   } else {
     annotations.value = [...annotations.value, next]
     updateManifestCount(draft.screenId, draft.stateId, currentScreenAnnotations.value.length)
-    writeCollaborationCache('annotations', annotations.value, null, null)
+    writeScopedCollaborationCache('annotations', annotationScopeId(draft.screenId, draft.stateId), currentScreenAnnotations.value, null, null, 'pending')
     setCollaborationSource('annotations', 'local-cache', 'success', collaborationContext.unavailableReason)
   }
   cancelAnnotationDraft()
@@ -985,7 +1045,7 @@ async function saveAnnotationEdit() {
   const saved = await submitRemoteAnnotationChange(active.screenId, active.stateId, '编辑', (remote) => remote.map(applyEdit))
   if (saved === undefined) return
   annotations.value = saved ? [...annotations.value.filter((item) => annotationScopeId(item.screenId, item.stateId) !== annotationScopeId(active.screenId, active.stateId)), ...saved] : annotations.value.map(applyEdit)
-  if (saved === null) writeCollaborationCache('annotations', annotations.value, null, null)
+  if (saved === null) writeScopedCollaborationCache('annotations', annotationScopeId(active.screenId, active.stateId), annotations.value.filter((item) => annotationScopeId(item.screenId, item.stateId) === annotationScopeId(active.screenId, active.stateId)), null, null, 'pending')
   closeAnnotationDialog()
 }
 
@@ -1011,7 +1071,7 @@ async function updateAnnotationPosition(id: string, x: number, y: number) {
   annotations.value = saved
     ? [...annotations.value.filter((item) => annotationScopeId(item.screenId, item.stateId) !== annotationScopeId(target.screenId, target.stateId)), ...saved]
     : annotations.value.map(applyPosition)
-  if (saved === null) writeCollaborationCache('annotations', annotations.value, null, null)
+  if (saved === null) writeScopedCollaborationCache('annotations', annotationScopeId(target.screenId, target.stateId), annotations.value.filter((item) => annotationScopeId(item.screenId, item.stateId) === annotationScopeId(target.screenId, target.stateId)), null, null, 'pending')
   return true
 }
 
@@ -1021,7 +1081,7 @@ async function removeAnnotation(id: string) {
   const saved = await submitRemoteAnnotationChange(target.screenId, target.stateId, '删除', (remote) => remote.filter((item) => item.id !== id))
   if (saved === undefined) return
   annotations.value = saved ? [...annotations.value.filter((item) => annotationScopeId(item.screenId, item.stateId) !== annotationScopeId(target.screenId, target.stateId)), ...saved] : annotations.value.filter((item) => item.id !== id)
-  if (saved === null) writeCollaborationCache('annotations', annotations.value, null, null)
+  if (saved === null) writeScopedCollaborationCache('annotations', annotationScopeId(target.screenId, target.stateId), annotations.value.filter((item) => annotationScopeId(item.screenId, item.stateId) === annotationScopeId(target.screenId, target.stateId)), null, null, 'pending')
   updateManifestCount(target.screenId, target.stateId, annotations.value.filter((item) => annotationScopeId(item.screenId, item.stateId) === annotationScopeId(target.screenId, target.stateId)).length)
 }
 
@@ -1067,11 +1127,18 @@ async function saveCurrentPageDescription() {
       const saved = await saveRemotePageDescription(annotationScopeId(screenId, stateId), next.authorName ?? '未署名', next)
       if (!saved) return false
       updatePageDescriptionManifest(screenId, stateId, 1, next.highlighted, next.highlightColor)
-      if (pageDescriptionManifest.value) await saveRemotePageDescriptionManifest(pageDescriptionManifest.value, next.authorName ?? '未署名', annotationScopeId(screenId, stateId))
       const merged = [...pageDescriptions.value.filter((item) => annotationScopeId(item.screenId, item.stateId) !== annotationScopeId(screenId, stateId)), next]
       const syncedAt = new Date().toISOString()
-      writeCollaborationCache('pageDescriptions', merged, saved.sha, syncedAt)
-      pageDescriptions.value = readCollaborationCache<PrototypePageDescription[]>('pageDescriptions')?.value ?? merged
+      writeScopedCollaborationCache('pageDescriptions', annotationScopeId(screenId, stateId), next, saved.sha, syncedAt, 'synced')
+      pageDescriptions.value = merged
+      if (pageDescriptionManifest.value) {
+        try {
+          await saveRemotePageDescriptionManifest(pageDescriptionManifest.value, next.authorName ?? '未署名', annotationScopeId(screenId, stateId))
+        } catch (error) {
+          setCollaborationSource('pageDescriptions', 'gitee', 'error', `页面描述已保存，但索引同步失败：${error instanceof Error ? error.message : '未知错误'}`, syncedAt)
+          return true
+        }
+      }
       setCollaborationSource('pageDescriptions', 'gitee', 'success', '', syncedAt)
       return true
     } catch (error) {
@@ -1082,10 +1149,45 @@ async function saveCurrentPageDescription() {
     }
   }
   pageDescriptions.value = [...pageDescriptions.value.filter((item) => annotationScopeId(item.screenId, item.stateId) !== annotationScopeId(screenId, stateId)), next]
-  writeCollaborationCache('pageDescriptions', pageDescriptions.value, null, null)
+  writeScopedCollaborationCache('pageDescriptions', annotationScopeId(screenId, stateId), next, null, null, 'pending')
   setCollaborationSource('pageDescriptions', 'local-cache', 'success', collaborationContext.unavailableReason)
   updatePageDescriptionManifest(screenId, stateId, 1, next.highlighted, next.highlightColor)
   return true
+}
+
+async function syncPageDescriptionsFromJson(): Promise<PageDescriptionJsonSyncResult> {
+  if (!collaborationContext.remoteWritable) throw new Error(collaborationContext.unavailableReason || 'Gitee 当前不可写')
+  const seed = normalizePageDescriptions(await loadLocalJson<unknown>('page-descriptions.json', []))
+  if (!seed.length) throw new Error('page-descriptions.json 未包含有效页面描述')
+
+  const remoteManifest = await loadRemotePageDescriptionManifest()
+  pageDescriptionManifest.value = remoteManifest?.value ?? {
+    projectId: collaborationContext.projectId,
+    updatedAt: new Date().toISOString(),
+    scopes: {},
+    screens: {},
+  }
+  const syncedScopes: string[] = []
+  for (const description of seed) {
+    const scopeId = annotationScopeId(description.screenId, description.stateId)
+    const author = description.authorName?.trim() || annotationAuthorName.value.trim() || 'AI'
+    const saved = await saveRemotePageDescription(scopeId, author, description)
+    if (!saved) throw new Error(`页面描述 ${scopeId} 写入后未能回读`)
+    const canonical = normalizePageDescriptions([{ ...saved.value, screenId: description.screenId, stateId: description.stateId }])[0]
+    if (!canonical) throw new Error(`页面描述 ${scopeId} 回读内容无效`)
+    const syncedAt = new Date().toISOString()
+    writeScopedCollaborationCache('pageDescriptions', scopeId, canonical, saved.sha, syncedAt, 'synced')
+    pageDescriptions.value = [...pageDescriptions.value.filter((item) => annotationScopeId(item.screenId, item.stateId) !== scopeId), canonical]
+    updatePageDescriptionManifest(canonical.screenId, canonical.stateId, 1, canonical.highlighted, canonical.highlightColor)
+    if (!pageDescriptionManifest.value) throw new Error('页面描述索引未初始化')
+    const savedManifest = await saveRemotePageDescriptionManifest(pageDescriptionManifest.value, author, scopeId)
+    if (!savedManifest) throw new Error(`页面描述 ${scopeId} 已写入，但 manifest 回读失败`)
+    pageDescriptionManifest.value = savedManifest.value
+    syncedScopes.push(scopeId)
+  }
+  syncPageDescriptionEditor()
+  setCollaborationSource('pageDescriptions', 'gitee', 'success', `已从 JSON 同步 ${syncedScopes.length} 个页面描述`, new Date().toISOString())
+  return { syncedScopes, total: seed.length }
 }
 
 function exportAnnotations() {
@@ -1249,7 +1351,7 @@ function clampFlowZoom(value: number) {
 function saveFlowsToSession(flows: MainFlow[]) {
   const next = JSON.parse(JSON.stringify(flows)) as MainFlow[]
   const cached = readCollaborationCache<MainFlow[]>('flows')
-  writeCollaborationCache('flows', next, cached?.revision ?? null, cached?.lastRemoteSyncAt ?? null)
+  writeCollaborationCache('flows', next, cached?.revision ?? null, cached?.lastRemoteSyncAt ?? null, 'pending')
   mainFlows.value = next
   setLocalFlowDraftDirty(true)
   if (!mainFlows.value.some((flow) => flow.id === selectedFlowId.value)) selectedFlowId.value = mainFlows.value[0]?.id ?? ''
@@ -1266,7 +1368,7 @@ async function pushFlowsToGitee(flows: MainFlow[]) {
     const canonical = Array.isArray(saved?.value?.flows) ? saved.value.flows : null
     if (!saved || !canonical) return false
     const syncedAt = new Date().toISOString()
-    writeCollaborationCache('flows', canonical, saved.sha, syncedAt)
+    writeCollaborationCache('flows', canonical, saved.sha, syncedAt, 'synced')
     mainFlows.value = canonical
     setLocalFlowDraftDirty(false)
     if (!mainFlows.value.some((flow) => flow.id === selectedFlowId.value)) selectedFlowId.value = mainFlows.value[0]?.id ?? ''
@@ -1402,6 +1504,7 @@ export function usePrototypeContext() {
     saveAnnotationPollingInterval,
     exportAnnotations,
     saveCurrentPageDescription,
+    syncPageDescriptionsFromJson,
     exportPageDescriptions,
     annotationPointStyle,
     selectFlow,

@@ -6,6 +6,7 @@ export type MainFlowId = string
 export type CollaborationDataKind = 'annotations' | 'pageDescriptions' | 'flows'
 export type DataSource = 'gitee' | 'local-cache' | 'local-seed'
 export type CollaborationSyncStatus = 'idle' | 'syncing' | 'success' | 'error' | 'conflict'
+export type CollaborationCacheStatus = 'synced' | 'pending' | 'stale' | 'error'
 
 export interface CollaborationSourceState {
   source: DataSource
@@ -14,12 +15,37 @@ export interface CollaborationSourceState {
   message?: string
 }
 
-export interface CollaborationCacheSnapshot<T> {
-  schemaVersion: 2
+export interface CollaborationCacheEntry<T> {
   value: T
   revision: string | null
   cachedAt: string
   lastRemoteSyncAt: string | null
+  status: CollaborationCacheStatus
+  error?: string
+}
+
+export interface CollaborationCacheSnapshot<T> extends CollaborationCacheEntry<T> {
+  schemaVersion: 3
+}
+
+export interface ScopedCollaborationCacheSnapshot<T> {
+  schemaVersion: 3
+  scopes: Record<string, CollaborationCacheEntry<T>>
+}
+
+export interface PageDescriptionJsonSyncResult {
+  syncedScopes: string[]
+  total: number
+}
+
+export interface PrototypeCoreCommands {
+  syncPageDescriptionsFromJson(): Promise<PageDescriptionJsonSyncResult>
+}
+
+declare global {
+  interface Window {
+    __PROTOTYPE_CORE__?: PrototypeCoreCommands
+  }
 }
 export type ThemeId = 'default' | 'warm' | 'calm' | 'spotify' | 'meta' | 'uber' | 'custom'
 export type ThemeColorKey =
