@@ -169,7 +169,7 @@ const hoveredAnnotationId = ref('')
 const annotationDraft = ref<AnnotationDraft | null>(null)
 const activeAnnotationId = ref('')
 const annotationDialogMode = ref<'create' | 'edit' | 'view'>('view')
-const annotationEditor = ref({ featureName: '', featureDescription: '', specialNote: '' })
+const annotationEditor = ref({ featureName: '', featureDescription: '', specialNote: '', color: defaultThemeColors.ocean })
 const annotations = ref<PrototypeAnnotation[]>([])
 const annotationManifest = ref<AnnotationManifest | null>(null)
 const pageDescriptions = ref<PrototypePageDescription[]>([])
@@ -492,8 +492,17 @@ const activeScopeHighlighted = computed(() => isScopeHighlighted(currentAnnotati
 const activeAnnotation = computed(() => annotations.value.find((item) => item.id === activeAnnotationId.value) ?? null)
 const hoveredAnnotation = computed(() => annotations.value.find((item) => item.id === hoveredAnnotationId.value) ?? null)
 
+function normalizeAnnotationColor(value: unknown) {
+  return typeof value === 'string' && isHexColor(value) ? value.toLowerCase() : undefined
+}
+
 function annotationPointStyle(annotation: PrototypeAnnotation | AnnotationDraft) {
-  return { left: `${annotation.x}%`, top: `${annotation.y}%` }
+  const color = normalizeAnnotationColor(annotation.color)
+  return {
+    left: `${annotation.x}%`,
+    top: `${annotation.y}%`,
+    ...(color ? { '--annotation-point-color': color } : {}),
+  } as CSSProperties
 }
 
 function syncPageDescriptionEditor() {
@@ -528,6 +537,7 @@ function normalizeAnnotations(value: unknown): PrototypeAnnotation[] {
       featureName: String(raw.featureName ?? ''),
       featureDescription: String(raw.featureDescription ?? ''),
       specialNote: String(raw.specialNote ?? ''),
+      color: normalizeAnnotationColor(raw.color),
       authorName: raw.authorName,
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
@@ -949,8 +959,9 @@ function handleAnnotationCanvasClick(event: MouseEvent, screenId: string) {
     featureName: '',
     featureDescription: '',
     specialNote: '',
+    color: activeThemeColors.value.ocean,
   }
-  annotationEditor.value = { featureName: '', featureDescription: '', specialNote: '' }
+  annotationEditor.value = { featureName: '', featureDescription: '', specialNote: '', color: activeThemeColors.value.ocean }
   annotationDialogMode.value = 'create'
 }
 
@@ -993,6 +1004,7 @@ async function saveAnnotationDraft() {
     featureName: draft.featureName.trim(),
     featureDescription: draft.featureDescription.trim(),
     specialNote: draft.specialNote.trim(),
+    color: normalizeAnnotationColor(draft.color),
     authorName: annotationAuthorName.value.trim() || '未署名',
     createdAt: now,
     updatedAt: now,
@@ -1018,6 +1030,7 @@ function openAnnotationDialog(id: string) {
     featureName: target.featureName,
     featureDescription: target.featureDescription,
     specialNote: target.specialNote,
+    color: normalizeAnnotationColor(target.color) ?? activeThemeColors.value.ocean,
   }
   annotationDialogMode.value = 'edit'
 }
@@ -1038,6 +1051,7 @@ async function saveAnnotationEdit() {
           featureName: annotationEditor.value.featureName.trim() || item.featureName,
           featureDescription: annotationEditor.value.featureDescription.trim() || item.featureDescription,
           specialNote: annotationEditor.value.specialNote.trim(),
+          color: normalizeAnnotationColor(annotationEditor.value.color) ?? item.color,
           authorName: annotationAuthorName.value.trim() || item.authorName,
           updatedAt: now,
         }

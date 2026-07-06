@@ -134,6 +134,7 @@ export interface PrototypeAnnotation {
   featureName: string
   featureDescription: string
   specialNote: string
+  color?: string
   authorName?: string
   createdAt?: string
   updatedAt?: string
@@ -166,6 +167,7 @@ export interface AnnotationDraft {
   featureName: string
   featureDescription: string
   specialNote: string
+  color?: string
 }
 
 export interface AnnotationManifestScreen {

@@ -978,7 +978,8 @@
   }
 
   .annotation-point {
-    @apply relative flex h-7 w-7 touch-none select-none items-center justify-center rounded-full bg-ocean text-xs font-semibold text-white shadow-[0_8px_18px_rgb(0_0_0/0.22)] ring-2 ring-white transition active:scale-95;
+    @apply relative flex h-7 w-7 touch-none select-none items-center justify-center rounded-full text-xs font-semibold text-white shadow-[0_8px_18px_rgb(0_0_0/0.22)] ring-2 ring-white transition active:scale-95;
+    background: var(--annotation-point-color, rgb(var(--color-ocean)));
     cursor: grab;
   }
 
@@ -1002,7 +1003,8 @@
   }
 
   .annotation-point-wrap.draft .annotation-point {
-    @apply bg-warning text-ink;
+    @apply text-white;
+    background: var(--annotation-point-color, rgb(var(--color-warning)));
   }
 
   @keyframes annotation-hold-progress {
@@ -1570,6 +1572,10 @@
 
   .annotation-form textarea {
     @apply min-h-24 resize-none leading-6;
+  }
+
+  .annotation-form .annotation-color-input {
+    @apply h-11 cursor-pointer p-1;
   }
 
   .annotation-form-actions {

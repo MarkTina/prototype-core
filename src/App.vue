@@ -2244,6 +2244,10 @@ onBeforeUnmount(() => {
           <textarea v-model="annotationDraft.specialNote" :placeholder="t('annotationNotePlaceholder')" />
         </label>
         <label>
+          <span>注释点颜色</span>
+          <input v-model="annotationDraft.color" class="annotation-color-input" type="color" />
+        </label>
+        <label>
           <span>{{ t('annotationAuthorName') }}</span>
           <input v-model="annotationAuthorName" type="text" :placeholder="t('annotationAuthorPlaceholder')" />
         </label>
@@ -2272,6 +2276,10 @@ onBeforeUnmount(() => {
         <label>
           <span>{{ t('annotationSpecialNote') }}</span>
           <textarea v-model="annotationEditor.specialNote" :readonly="annotationDialogMode === 'view'" />
+        </label>
+        <label v-if="annotationDialogMode === 'edit'">
+          <span>注释点颜色</span>
+          <input v-model="annotationEditor.color" class="annotation-color-input" type="color" />
         </label>
         <label v-if="annotationDialogMode === 'edit'">
           <span>{{ t('annotationAuthorName') }}</span>
