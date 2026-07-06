@@ -18,15 +18,16 @@
 
 ## 当前现状与限制
 
-- 内核与移动端/PC 最小示例均可构建，现有协作策略测试为 7 项。
+- 内核与移动端/PC 最小示例均可构建，现有协作策略测试为 8 项。
 - 包可生成 `.tgz`，包含 ESM、声明文件和完整 CSS，不包含产品文件或源仓库配置。
 - 顶部导航展示当前内核包版本，并在应用启动后从 npm `latest` 查询最新版本；查询失败只降级显示，不影响原型主流程。
 - 数据源面板可检查 Gitee、OSS、部署、原型访问和 Bug 删除密码共 20 项配置；只展示变量名与存在状态，不读取或显示敏感值。
 - Gitee 与 OSS 配置已改为运行时注入；这些浏览器端能力只适用于原型，不构成生产级秘密保护。
-- npm 公共发布已可用；Trusted Publisher 必须与 `MarkTina/prototype-core` 和 `publish.yml` 精确绑定。
+- npm 公共发布已可用；当前 latest 为 `@marktowin/prototype-core@1.2.2`。Trusted Publisher 必须与 `MarkTina/prototype-core` 和 `publish.yml` 精确绑定；本地 Token 发布需显式关闭 provenance。
 - 页面描述支持 `highlighted` 与可选 `highlightColor` 重点标注；导航和状态页切换以名称前的彩色书签展示，旧数据默认使用红色。自定义颜色列表按项目缓存在浏览器本地。
 - 移动端演示模式保持 `393×852` 基准画布并按视口整体等比缩放，不会因演示尺寸变化触发业务页面响应式重排。
 - 添加注释点时，页面内所有内容统一使用十字光标，点击交互组件只创建标注并阻止其业务操作；取消添加后恢复正常交互。
+- 注释点支持可选 `color` 字段；新增和编辑弹窗可选择颜色，旧数据无颜色时继续使用主题主色。
 - Gitee 协作路径、scope、缓存和写入动作均由内核通用契约约束；消费者标识和资源只能通过产品定义与 `runtimeConfig` 注入，不进入内核文档或源码。
 - 协作缓存使用 schema v3：页面描述与注释按 scope 保存独立 revision，流程与 Bug 按整文件保存，并区分 `synced/pending/stale/error`；旧 v2 缓存会保守迁移为 `stale`。
 - 页面描述 JSON 由 AI 修改后，可通过 `window.__PROTOTYPE_CORE__.syncPageDescriptionsFromJson()` 执行“写 Gitee → 合并 manifest → 精确回读 → 更新缓存”；JSON 不作为启用远端协作后的第二真值。
@@ -62,8 +63,8 @@
 - **日期**: 2026-07-03。
 
 <!-- fresh-meta
-last-updated: 2026-07-03
-trigger-reason: 协作缓存升级为 schema v3 并建立页面描述 JSON 到 Gitee 的闭环
+last-updated: 2026-07-06
+trigger-reason: 发布 1.2.2 并同步注释点颜色能力与本地 npm 发布注意事项
 updated-by: handoff-maintainer
-next-review: 当首个消费者完成 schema v3 缓存与页面描述同步回归时
+next-review: 当首个消费者完成 1.2.2 安装回归或发布流程改回 Trusted Publisher 时
 -->

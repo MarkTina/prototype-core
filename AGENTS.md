@@ -76,6 +76,12 @@ pnpm pack:check
 - 发布前检查 tarball 内容、运行 Secret 扫描，并确认标签严格等于 `v<package.version>`。
 - 项目现状、限制或长期决策变化时，按 `handoff-maintainer` 更新 `HANDOFF.md`。
 
+## 发布与密钥
+
+- npm 发布 Token 存在当前设备用户级环境变量 `AGENT_NPM_ACCESS_TOKEN`；兼容名为 `NPM_TOKEN`、`NODE_AUTH_TOKEN`。
+- 新会话需要查找该变量时，使用 `env-var-manager` skill；本机备份索引在 `~/.agent-env/registry.sqlite3`。
+- 禁止把 npm Token 明文写入仓库、`.npmrc`、日志、提交信息或文档；只允许记录变量名和查找方式。
+
 ## 修改禁区
 
 - 不恢复原业务仓库历史，不复制原仓库 `.env*` 或部署脚本。
