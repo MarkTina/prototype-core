@@ -1918,7 +1918,12 @@ onBeforeUnmount(() => {
                       </div>
                     </div>
                   </div>
-                  <TabBar v-if="screen.platform === 'mobile' && screen.hasTabBar" :active="selectedTab" :items="tabBarItems" @change="goTab" />
+                  <TabBar
+                    v-if="screen.platform === 'mobile' && screen.hasTabBar"
+                    :active="effectiveMode === 'interactive' ? selectedTab : screen.id"
+                    :items="tabBarItems"
+                    @change="goTab"
+                  />
                 </div>
               </div>
               <div v-if="effectiveMode === 'overview' || effectiveMode === 'flow'" class="prototype-screen-caption mt-3 text-center text-sm font-semibold text-muted" :class="{ 'flow-caption': effectiveMode === 'flow' }">
