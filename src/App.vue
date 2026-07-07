@@ -177,10 +177,15 @@ const pageDescriptionCopyNotice = ref('')
 const selectedPageDescriptionSectionIds = ref<string[]>([...defaultPageDescriptionSectionIds])
 const pageDescriptionEditing = ref(false)
 const presetHighlightColors = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6']
+const presetAnnotationColors = presetHighlightColors
 const customHighlightColorInput = ref('')
 const customHighlightColorNotice = ref('')
 const customHighlightColorStorageKey = `prototype-highlight-colors:${collaborationContext.projectId}`
 const customHighlightColors = ref<string[]>(loadCustomHighlightColors())
+const customAnnotationColorInput = ref('')
+const customAnnotationColorNotice = ref('')
+const customAnnotationColorStorageKey = `prototype-annotation-colors:${collaborationContext.projectId}`
+const customAnnotationColors = ref<string[]>(loadCustomAnnotationColors())
 
 function loadCustomHighlightColors(): string[] {
   try {
@@ -193,8 +198,24 @@ function loadCustomHighlightColors(): string[] {
   }
 }
 
+function loadCustomAnnotationColors(): string[] {
+  try {
+    const stored = window.localStorage.getItem(customAnnotationColorStorageKey)
+    if (!stored) return []
+    const parsed = JSON.parse(stored)
+    return Array.isArray(parsed) ? parsed.filter((color): color is string => /^#[0-9a-f]{6}$/i.test(color)) : []
+  } catch {
+    return []
+  }
+}
+
 function selectHighlightColor(color: string) {
   pageDescriptionEditor.value.highlightColor = color
+}
+
+function selectAnnotationColor(color: string, target: 'draft' | 'editor') {
+  if (target === 'draft' && annotationDraft.value) annotationDraft.value.color = color
+  if (target === 'editor') annotationEditor.value.color = color
 }
 
 function addCustomHighlightColor() {
@@ -213,6 +234,24 @@ function addCustomHighlightColor() {
   pageDescriptionEditor.value.highlightColor = color
   customHighlightColorInput.value = ''
   customHighlightColorNotice.value = '已添加并保存到本地'
+}
+
+function addCustomAnnotationColor(target: 'draft' | 'editor') {
+  const color = customAnnotationColorInput.value.trim().toLowerCase()
+  if (!/^#[0-9a-f]{6}$/.test(color)) {
+    customAnnotationColorNotice.value = '请输入 #RRGGBB 格式的颜色值'
+    return
+  }
+  customAnnotationColors.value = [color, ...customAnnotationColors.value.filter((item) => item !== color)]
+  try {
+    window.localStorage.setItem(customAnnotationColorStorageKey, JSON.stringify(customAnnotationColors.value))
+  } catch {
+    customAnnotationColorNotice.value = '颜色已添加，但本地缓存失败'
+    return
+  }
+  selectAnnotationColor(color, target)
+  customAnnotationColorInput.value = ''
+  customAnnotationColorNotice.value = '已添加并保存到本地'
 }
 const mobilePagePickerVisible = ref(false)
 const mobilePagePickerQuery = ref('')
@@ -2243,10 +2282,26 @@ onBeforeUnmount(() => {
           <span>{{ t('annotationSpecialNote') }}</span>
           <textarea v-model="annotationDraft.specialNote" :placeholder="t('annotationNotePlaceholder')" />
         </label>
-        <label>
+        <section class="annotation-color-field">
           <span>注释点颜色</span>
-          <input v-model="annotationDraft.color" class="annotation-color-input" type="color" />
-        </label>
+          <div class="annotation-color-swatches">
+            <button
+              v-for="color in [...presetAnnotationColors, ...customAnnotationColors]"
+              :key="color"
+              type="button"
+              :class="{ active: annotationDraft.color === color }"
+              :style="{ backgroundColor: color }"
+              :aria-label="`选择颜色 ${color}`"
+              :title="color"
+              @click="selectAnnotationColor(color, 'draft')"
+            />
+          </div>
+          <div class="annotation-custom-color">
+            <input v-model="customAnnotationColorInput" type="text" maxlength="7" placeholder="#12b981" @keydown.enter.prevent="addCustomAnnotationColor('draft')" />
+            <button type="button" @click="addCustomAnnotationColor('draft')">新增</button>
+          </div>
+          <small v-if="customAnnotationColorNotice">{{ customAnnotationColorNotice }}</small>
+        </section>
         <label>
           <span>{{ t('annotationAuthorName') }}</span>
           <input v-model="annotationAuthorName" type="text" :placeholder="t('annotationAuthorPlaceholder')" />
@@ -2277,10 +2332,26 @@ onBeforeUnmount(() => {
           <span>{{ t('annotationSpecialNote') }}</span>
           <textarea v-model="annotationEditor.specialNote" :readonly="annotationDialogMode === 'view'" />
         </label>
-        <label v-if="annotationDialogMode === 'edit'">
+        <section v-if="annotationDialogMode === 'edit'" class="annotation-color-field">
           <span>注释点颜色</span>
-          <input v-model="annotationEditor.color" class="annotation-color-input" type="color" />
-        </label>
+          <div class="annotation-color-swatches">
+            <button
+              v-for="color in [...presetAnnotationColors, ...customAnnotationColors]"
+              :key="color"
+              type="button"
+              :class="{ active: annotationEditor.color === color }"
+              :style="{ backgroundColor: color }"
+              :aria-label="`选择颜色 ${color}`"
+              :title="color"
+              @click="selectAnnotationColor(color, 'editor')"
+            />
+          </div>
+          <div class="annotation-custom-color">
+            <input v-model="customAnnotationColorInput" type="text" maxlength="7" placeholder="#12b981" @keydown.enter.prevent="addCustomAnnotationColor('editor')" />
+            <button type="button" @click="addCustomAnnotationColor('editor')">新增</button>
+          </div>
+          <small v-if="customAnnotationColorNotice">{{ customAnnotationColorNotice }}</small>
+        </section>
         <label v-if="annotationDialogMode === 'edit'">
           <span>{{ t('annotationAuthorName') }}</span>
           <input v-model="annotationAuthorName" type="text" :placeholder="t('annotationAuthorPlaceholder')" />

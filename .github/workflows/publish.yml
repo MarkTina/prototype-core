@@ -1,19 +1,27 @@
-name: 发布 npm 包
+name: 自动发布 npm 包
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
+  workflow_dispatch:
 
 permissions:
   contents: write
   id-token: write
 
+concurrency:
+  group: npm-publish-main
+  cancel-in-progress: false
+
 jobs:
   publish:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -22,18 +30,38 @@ jobs:
           cache: pnpm
       - run: npm install --global npm@^11.5.1
       - run: pnpm install --frozen-lockfile
+      - name: 检查 npm Token
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+            echo "::error::缺少 GitHub Repository Secret：NPM_TOKEN"
+            exit 1
+          fi
+      - name: 自动升级 patch 版本
+        id: version
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          npm version patch -m "chore(release): publish %s [skip ci]"
+          VERSION="$(node -p "require('./package.json').version")"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
       - run: pnpm build
-      - name: 校验版本
-        shell: bash
-        run: |
-          EXPECTED_TAG="v$(node -p "require('./package.json').version")"
-          test "$GITHUB_REF_NAME" = "$EXPECTED_TAG"
       - run: pnpm pack --pack-destination release
-      - run: npm publish --access public
-      - name: 创建 Release
+      - name: 发布 npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --provenance
+      - name: 推送版本提交和标签
         shell: bash
         run: |
-          VERSION=$(node -p "require('./package.json').version")
-          gh release create "$GITHUB_REF_NAME" release/*.tgz --generate-notes --title "Prototype Core $VERSION"
+          git push origin HEAD:main
+          git push origin "v${{ steps.version.outputs.version }}"
+      - name: 创建 GitHub Release
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v${{ steps.version.outputs.version }}" release/*.tgz --generate-notes --title "Prototype Core ${{ steps.version.outputs.version }}"
