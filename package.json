@@ -1,13 +1,17 @@
 {
   "name": "@marktowin/prototype-core",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "面向移动端与 PC Web 原型的 Vue 评审、流程和协作内核",
   "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@11.7.0",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
