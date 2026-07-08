@@ -7,6 +7,7 @@ import PrototypeStateSwitcher from './components/phone/PrototypeStateSwitcher.vu
 import FlowEditor from './components/flow-editor/FlowEditor.vue'
 import BugReportPage from './tools/bugs/BugReportPage.vue'
 import PrototypeCoreHelpPage from './help/PrototypeCoreHelpPage.vue'
+import PrototypeCoreThemeGuidePage from './help/PrototypeCoreThemeGuidePage.vue'
 import { usePrototypeContext, useFlowEditorContext } from './prototype/usePrototype'
 import { useProductBugs } from './tools/bugs/useProductBugs'
 import type { DisplayScreen, PrototypeAnnotation } from './types/prototype'
@@ -14,6 +15,9 @@ import { getPrototypeRuntime } from './core/productAdapter'
 
 const {
   themeColorFields,
+  themeDesignColorFields,
+  themeTypographyFields,
+  themeRadiusFields,
   lang,
   mode,
   currentScreen,
@@ -54,8 +58,11 @@ const {
   pageDescriptionManifest,
   pageDescriptionEditor,
   activeThemeColors,
+  activeDesignColors,
   themeOptions,
   themeStyle,
+  themeLabel,
+  themeDescription,
   screens,
   mainFlows,
   showFlowEditor,
@@ -82,6 +89,9 @@ const {
   t,
   selectTheme,
   updateCustomThemeColor,
+  updateCustomThemeDesignColor,
+  updateCustomThemeTypography,
+  updateCustomThemeRadius,
   resetCustomTheme,
   exportCustomTheme,
   importCustomTheme,
@@ -432,7 +442,7 @@ const gitHistory = __GIT_HISTORY__
 const showUpdateHistory = ref(false)
 const expandedHistoryHash = ref(gitHistory[0]?.hash ?? '')
 const latestUpdateTime = computed(() => gitHistory[0]?.date ?? '暂无记录')
-const appRoute = ref<'prototype' | 'bugs' | 'help'>('prototype')
+const appRoute = ref<'prototype' | 'bugs' | 'help' | 'themeGuide'>('prototype')
 const interactiveSideNavRef = ref<HTMLElement | null>(null)
 const interactiveSideNavCanScrollUp = ref(false)
 const interactiveSideNavCanScrollDown = ref(false)
@@ -1209,6 +1219,10 @@ function cancelCurrentShortcutOperation() {
     closeHelpPage()
     return
   }
+  if (appRoute.value === 'themeGuide') {
+    closeThemeGuidePage()
+    return
+  }
   if (appRoute.value === 'bugs') {
     closeBugPage()
     return
@@ -1414,6 +1428,7 @@ function dismissUpdatePrompt() {
 function syncAppRoute() {
   if (window.location.hash === '#/bugs') appRoute.value = 'bugs'
   else if (window.location.hash === '#/prototype-core-help') appRoute.value = 'help'
+  else if (window.location.hash === '#/prototype-core-theme') appRoute.value = 'themeGuide'
   else appRoute.value = 'prototype'
 }
 
@@ -1430,6 +1445,15 @@ function openHelpPage() {
 }
 
 function closeHelpPage() {
+  window.location.hash = '#/prototype'
+}
+
+function openThemeGuidePage() {
+  showThemePanel.value = false
+  window.location.hash = '#/prototype-core-theme'
+}
+
+function closeThemeGuidePage() {
   window.location.hash = '#/prototype'
 }
 
@@ -1570,11 +1594,12 @@ onBeforeUnmount(() => {
     class="min-h-screen bg-canvas text-ink transition-[padding] duration-200"
     :class="[
       isMobilePureInteractive ? 'mobile-pure-interactive' : '',
-      appRoute === 'help' ? 'prototype-help-route' : presentationMode ? 'presentation-mode' : (!isMobilePureInteractive && (showUpdatePrompt ? 'has-update-banner pt-[120px]' : 'pt-[68px]')),
+      appRoute === 'help' || appRoute === 'themeGuide' ? 'prototype-help-route' : presentationMode ? 'presentation-mode' : (!isMobilePureInteractive && (showUpdatePrompt ? 'has-update-banner pt-[120px]' : 'pt-[68px]')),
     ]"
     :style="themeStyle"
   >
     <PrototypeCoreHelpPage v-if="appRoute === 'help'" @close="closeHelpPage" />
+    <PrototypeCoreThemeGuidePage v-else-if="appRoute === 'themeGuide'" @close="closeThemeGuidePage" />
     <section v-else-if="!isAuthenticated" class="flex min-h-screen items-center justify-center px-5 py-10">
       <form
         class="w-full max-w-sm rounded-[28px] border border-line bg-panel p-6 text-center shadow-soft"
@@ -1656,17 +1681,23 @@ onBeforeUnmount(() => {
         </div>
           <div class="top-control-group relative flex rounded-full bg-panel ring-1 ring-line">
           <button class="mode-btn flex items-center gap-2" :class="{ active: showThemePanel }" @click="showThemePanel = !showThemePanel">
-            <span class="theme-swatch" :style="{ '--swatch-color': activeThemeColors.ocean }" />
-            {{ t('themeButton') }}
+            <span class="theme-swatch" :style="{ '--swatch-color': activeDesignColors.primary }" />
+            主题切换
           </button>
           <div v-if="showThemePanel" class="theme-popover">
             <div class="flex items-start justify-between gap-3">
               <div>
-                <p class="text-sm font-semibold text-ink">{{ t('themeTitle') }}</p>
-                <p class="mt-1 text-xs leading-5 text-muted">{{ t('themeDescription') }}</p>
+                <p class="text-sm font-semibold text-ink">主题切换</p>
+                <p class="mt-1 text-xs leading-5 text-muted">按 DESIGN.md 扩展颜色、字体和形状变量；旧 --color-* 会继续兼容。</p>
               </div>
-              <button class="text-xs font-semibold text-ocean" @click="resetCustomTheme">{{ t('themeReset') }}</button>
+              <div class="flex shrink-0 items-center gap-2">
+                <button class="theme-icon-btn" type="button" aria-label="查看主题实现准则" title="查看主题实现准则" @click="openThemeGuidePage">
+                  <BookOpen class="h-4 w-4" />
+                </button>
+                <button class="text-xs font-semibold text-ocean" @click="resetCustomTheme">重置</button>
+              </div>
             </div>
+            <p class="theme-section-title">预设主题</p>
             <div class="mt-3 flex flex-wrap gap-2">
               <button
                 v-for="theme in themeOptions"
@@ -1675,18 +1706,66 @@ onBeforeUnmount(() => {
                 :class="{ active: selectedThemeId === theme.id }"
                 @click="selectTheme(theme.id)"
               >
-                <span class="theme-swatch" :style="{ '--swatch-color': theme.colors.ocean }" />
+                <span class="theme-swatch" :style="{ '--swatch-color': theme.designColors.primary }" />
                 <span class="min-w-0">
-                  <b>{{ t(theme.nameKey) }}</b>
-                  <small>{{ t(theme.descriptionKey) }}</small>
+                  <b>{{ themeLabel(theme) }}</b>
+                  <small>{{ themeDescription(theme) }}</small>
                 </span>
               </button>
             </div>
             <div class="mt-3 flex gap-2">
-              <button class="theme-file-btn" @click="exportCustomTheme">{{ t('themeExport') }}</button>
-              <button class="theme-file-btn" @click="themeImportInput?.click()">{{ t('themeImport') }}</button>
+              <button class="theme-file-btn" @click="exportCustomTheme">导出主题</button>
+              <button class="theme-file-btn" @click="themeImportInput?.click()">导入主题</button>
               <input ref="themeImportInput" class="hidden" type="file" accept="application/json,.json" @change="importCustomTheme" />
             </div>
+            <p class="theme-section-title">设计系统颜色</p>
+            <div class="theme-color-grid">
+              <label v-for="field in themeDesignColorFields" :key="field.key" class="theme-color-field">
+                <input
+                  type="color"
+                  :value="activeDesignColors[field.key]"
+                  @input="updateCustomThemeDesignColor(field.key, ($event.target as HTMLInputElement).value)"
+                />
+                <span>
+                  <b>{{ field.label }}</b>
+                  <small>{{ field.description }}</small>
+                </span>
+                <input
+                  type="text"
+                  :value="activeDesignColors[field.key]"
+                  @input="updateCustomThemeDesignColor(field.key, ($event.target as HTMLInputElement).value)"
+                />
+              </label>
+            </div>
+            <p class="theme-section-title">字体</p>
+            <div class="theme-token-grid">
+              <label v-for="field in themeTypographyFields" :key="field.key" class="theme-token-field">
+                <span>
+                  <b>{{ field.label }}</b>
+                  <small>{{ field.description }}</small>
+                </span>
+                <input
+                  type="text"
+                  :value="themeOptions.find((theme) => theme.id === selectedThemeId)?.typography[field.key]"
+                  @input="updateCustomThemeTypography(field.key, ($event.target as HTMLInputElement).value)"
+                />
+              </label>
+            </div>
+            <p class="theme-section-title">形状</p>
+            <div class="theme-token-grid">
+              <label v-for="field in themeRadiusFields" :key="field.key" class="theme-token-field">
+                <span>
+                  <b>{{ field.label }}</b>
+                  <small>{{ field.description }}</small>
+                </span>
+                <input
+                  type="text"
+                  :value="themeOptions.find((theme) => theme.id === selectedThemeId)?.radius[field.key]"
+                  @input="updateCustomThemeRadius(field.key, ($event.target as HTMLInputElement).value)"
+                />
+              </label>
+            </div>
+            <p class="theme-section-title">内核兼容颜色</p>
             <div class="theme-color-grid">
               <label v-for="field in themeColorFields" :key="field.key" class="theme-color-field">
                 <input
@@ -1695,8 +1774,8 @@ onBeforeUnmount(() => {
                   @input="updateCustomThemeColor(field.key, ($event.target as HTMLInputElement).value)"
                 />
                 <span>
-                  <b>{{ t(field.labelKey) }}</b>
-                  <small>{{ t(field.descKey) }}</small>
+                  <b>{{ field.label }}</b>
+                  <small>{{ field.description }}</small>
                 </span>
                 <input
                   type="text"

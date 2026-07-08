@@ -17,11 +17,11 @@ const { go } = usePrototypeContext()
 </template>
 
 <style scoped>
-.demo-pc { box-sizing: border-box; display: grid; grid-template-columns: 300px 1fr; width: 1920px; height: 1080px; background: #f3f4f6; color: #111827; }
-aside { padding: 52px; background: #111827; color: white; font-size: 26px; font-weight: 700; }
+.demo-pc { box-sizing: border-box; display: grid; grid-template-columns: 300px 1fr; width: 1920px; height: 1080px; background: rgb(var(--ds-color-canvas-parchment)); color: rgb(var(--ds-color-ink)); }
+aside { padding: 52px; background: rgb(var(--ds-color-surface-tile-3)); color: rgb(var(--ds-color-body-on-dark)); font-size: 26px; font-weight: 700; }
 section { padding: 170px 140px; }
-span { color: #2563eb; font-weight: 700; }
+span { color: rgb(var(--ds-color-primary)); font-weight: 700; }
 h1 { margin: 28px 0 16px; font-size: 72px; }
-p { color: #6b7280; font-size: 26px; }
-button { margin-top: 48px; border: 0; border-radius: 14px; padding: 18px 26px; background: #2563eb; color: white; font-size: 18px; cursor: pointer; }
+p { color: rgb(var(--ds-color-ink-muted-48)); font-size: 26px; }
+button { margin-top: 48px; border: 0; border-radius: var(--ds-rounded-lg); padding: 18px 26px; background: rgb(var(--ds-color-primary)); color: rgb(var(--ds-color-body-on-dark)); font-size: 18px; cursor: pointer; }
 </style>

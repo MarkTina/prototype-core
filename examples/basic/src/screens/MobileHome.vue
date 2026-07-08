@@ -17,10 +17,10 @@ const { activePrototypeStateId, setPrototypeState, go } = usePrototypeContext()
 </template>
 
 <style scoped>
-.demo-mobile { min-height: 100%; padding: 72px 28px; background: #f5f5f7; color: #1d1d1f; }
-.demo-kicker { color: #2563eb; font-size: 12px; font-weight: 700; letter-spacing: .12em; }
+.demo-mobile { min-height: 100%; padding: 72px 28px; background: rgb(var(--ds-color-canvas-parchment)); color: rgb(var(--ds-color-ink)); }
+.demo-kicker { color: rgb(var(--ds-color-primary)); font-size: 12px; font-weight: 700; letter-spacing: .12em; }
 h1 { margin: 18px 0 12px; font-size: 32px; line-height: 1.15; }
-p { color: #6b7280; line-height: 1.7; }
+p { color: rgb(var(--ds-color-ink-muted-48)); line-height: 1.7; }
 .demo-actions { display: grid; gap: 12px; margin-top: 32px; }
-button { border: 0; border-radius: 14px; padding: 14px 18px; background: #1d1d1f; color: white; cursor: pointer; }
+button { border: 0; border-radius: var(--ds-rounded-lg); padding: 14px 18px; background: rgb(var(--ds-color-ink)); color: rgb(var(--ds-color-body-on-dark)); cursor: pointer; }
 </style>

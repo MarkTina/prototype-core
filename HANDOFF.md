@@ -28,6 +28,7 @@
 - 移动端演示模式保持 `393×852` 基准画布并按视口整体等比缩放，不会因演示尺寸变化触发业务页面响应式重排。
 - 添加注释点时，页面内所有内容统一使用十字光标，点击交互组件只创建标注并阻止其业务操作；取消添加后恢复正常交互。
 - 注释点支持可选 `color` 字段；新增和编辑弹窗可选择颜色，旧数据无颜色时继续使用主题主色。
+- 主题面板已从配色切换升级为主题切换：以 `DESIGN.md` 为事实来源、`DESIGN-TOKENS.md` 为实现索引，运行时新增 `--ds-*` 颜色、字体、圆角、间距和阴影变量；旧 `--color-*` 与旧版主题 JSON 继续兼容；`#/prototype-core-theme` 提供公开主题准则页，入口在主题切换弹层。
 - Gitee 协作路径、scope、缓存和写入动作均由内核通用契约约束；消费者标识和资源只能通过产品定义与 `runtimeConfig` 注入，不进入内核文档或源码。
 - 协作缓存使用 schema v3：页面描述与注释按 scope 保存独立 revision，流程与 Bug 按整文件保存，并区分 `synced/pending/stale/error`；旧 v2 缓存会保守迁移为 `stale`。
 - 页面描述 JSON 由 AI 修改后，可通过 `window.__PROTOTYPE_CORE__.syncPageDescriptionsFromJson()` 执行“写 Gitee → 合并 manifest → 精确回读 → 更新缓存”；JSON 不作为启用远端协作后的第二真值。
@@ -62,9 +63,17 @@
 - **影响**: AI 修改页面描述 JSON 后必须显式同步 Gitee；远端失败保留 stale 缓存并允许重试。
 - **日期**: 2026-07-03。
 
+### DR-20260707-01: 主题切换引入设计系统语义 token
+
+- **背景**: 旧主题面板只暴露 `ocean/ink/muted` 等内核颜色，无法和 `DESIGN.md` 的颜色、字体、圆角、间距和阴影用途一一对应。
+- **决策**: 保留旧 `colors` 与 `--color-*` 兼容层，同时新增 `designColors/typography/radius/spacing/shadow` 与运行时 `--ds-*` 变量。
+- **原因**: 低风险地给 AI 和人工实现 UI 提供明确设计系统入口，避免重写历史 CSS 或破坏旧主题导入。
+- **影响**: 新增 UI 应优先查 `DESIGN-TOKENS.md` 并使用 `--ds-*`；消费者页面建议使用 token，但内核不强制扫描或改写业务代码。
+- **日期**: 2026-07-07。
+
 <!-- fresh-meta
-last-updated: 2026-07-06
-trigger-reason: 发布 1.2.2 并同步注释点颜色能力与本地 npm 发布注意事项
+last-updated: 2026-07-07
+trigger-reason: 完成主题切换与设计系统 token 兼容层
 updated-by: handoff-maintainer
-next-review: 当首个消费者完成 1.2.2 安装回归或发布流程改回 Trusted Publisher 时
+next-review: 当主题 token 接入首个真实消费者页面、主题准则路由内容变化或公共主题 API 再次变化时
 -->

@@ -44,6 +44,7 @@ import type {
   CollaborationDataKind,
   CollaborationSourceState,
   DataSource,
+  DesignColorKey,
   DisplayScreen,
   Lang,
   MainFlow,
@@ -51,6 +52,7 @@ import type {
   PageDescriptionJsonSyncResult,
   PrototypeAnnotation,
   PrototypePageDescription,
+  PrototypeThemeConfig,
   PrototypeStateOption,
   ScreenMeta,
   ScreenPlatform,
@@ -58,6 +60,10 @@ import type {
   ThemeColorKey,
   ThemeId,
   ThemePreset,
+  ThemeRadiusKey,
+  ThemeShadowKey,
+  ThemeSpacingKey,
+  ThemeTypographyKey,
 } from '../types/prototype'
 
 const { copy, pages, states, flows: productFlows, extendContext } = getPrototypeProduct()
@@ -78,55 +84,208 @@ const defaultThemeColors: Record<ThemeColorKey, string> = {
   head: '#f5f5f7',
 }
 
+const defaultDesignColors: Record<DesignColorKey, string> = {
+  primary: '#0066cc',
+  primaryFocus: '#0071e3',
+  primaryOnDark: '#2997ff',
+  canvas: '#ffffff',
+  canvasParchment: '#f5f5f7',
+  surfacePearl: '#fafafc',
+  surfaceTile1: '#272729',
+  surfaceTile2: '#2a2a2c',
+  surfaceTile3: '#252527',
+  surfaceBlack: '#000000',
+  surfaceChipTranslucent: '#d2d2d7',
+  ink: '#1d1d1f',
+  body: '#1d1d1f',
+  bodyOnDark: '#ffffff',
+  bodyMuted: '#cccccc',
+  inkMuted80: '#333333',
+  inkMuted48: '#7a7a7a',
+  dividerSoft: '#f0f0f0',
+  hairline: '#e0e0e0',
+  success: '#22c55e',
+  warning: '#f59e0b',
+  danger: '#c93c37',
+}
+
+const defaultTypography: Record<ThemeTypographyKey, string> = {
+  displayFamily: '"SF Pro Display", system-ui, -apple-system, sans-serif',
+  bodyFamily: '"SF Pro Text", system-ui, -apple-system, sans-serif',
+  heroSize: '56px',
+  displayLgSize: '40px',
+  displayMdSize: '34px',
+  leadSize: '28px',
+  bodySize: '17px',
+  captionSize: '14px',
+  finePrintSize: '12px',
+  displayWeight: '600',
+  bodyWeight: '400',
+  lightWeight: '300',
+  bodyLineHeight: '1.47',
+}
+
+const defaultRadius: Record<ThemeRadiusKey, string> = {
+  none: '0px',
+  xs: '5px',
+  sm: '8px',
+  md: '11px',
+  lg: '18px',
+  pill: '9999px',
+}
+
+const defaultSpacing: Record<ThemeSpacingKey, string> = {
+  xs: '8px',
+  sm: '12px',
+  md: '17px',
+  lg: '24px',
+  xl: '32px',
+  section: '80px',
+}
+
+const defaultShadow: Record<ThemeShadowKey, string> = {
+  product: 'rgba(0, 0, 0, 0.22) 3px 5px 30px 0',
+  soft: '0 16px 40px rgba(17, 24, 39, 0.08)',
+}
+
+type ThemeConfigInput = {
+  colors?: Partial<Record<ThemeColorKey, string>>
+  designColors?: Partial<Record<DesignColorKey, string>>
+  typography?: Partial<Record<ThemeTypographyKey, string>>
+  radius?: Partial<Record<ThemeRadiusKey, string>>
+  spacing?: Partial<Record<ThemeSpacingKey, string>>
+  shadow?: Partial<Record<ThemeShadowKey, string>>
+}
+
+function createThemeConfig(partial: ThemeConfigInput = {}): PrototypeThemeConfig {
+  return {
+    colors: { ...defaultThemeColors, ...partial.colors },
+    designColors: { ...defaultDesignColors, ...partial.designColors },
+    typography: { ...defaultTypography, ...partial.typography },
+    radius: { ...defaultRadius, ...partial.radius },
+    spacing: { ...defaultSpacing, ...partial.spacing },
+    shadow: { ...defaultShadow, ...partial.shadow },
+  }
+}
+
+const appleThemeConfig = createThemeConfig({
+  colors: {
+    ...defaultThemeColors,
+    ocean: defaultDesignColors.primary,
+    ink: defaultDesignColors.ink,
+    muted: defaultDesignColors.inkMuted48,
+    line: defaultDesignColors.hairline,
+    canvas: defaultDesignColors.canvasParchment,
+    soft: defaultDesignColors.surfacePearl,
+    panel: defaultDesignColors.canvas,
+    success: defaultDesignColors.success,
+    warning: defaultDesignColors.warning,
+    danger: defaultDesignColors.danger,
+    dark: defaultDesignColors.surfaceTile3,
+    device: defaultDesignColors.ink,
+    head: defaultDesignColors.canvasParchment,
+  },
+})
+
 const themePresets: ThemePreset[] = [
-  { id: 'default', nameKey: 'themeDefault', descriptionKey: 'themeDefaultDesc', colors: defaultThemeColors },
+  { id: 'default', nameKey: 'themeDefault', descriptionKey: 'themeDefaultDesc', ...createThemeConfig({ designColors: { ...defaultDesignColors, primary: defaultThemeColors.ocean } }) },
+  { id: 'apple', nameKey: 'themeApple', descriptionKey: 'themeAppleDesc', ...appleThemeConfig },
   {
     id: 'warm',
     nameKey: 'themeWarm',
     descriptionKey: 'themeWarmDesc',
-    colors: { ...defaultThemeColors, ocean: '#2c251d', ink: '#2c251d', muted: '#7b7169', line: '#e5ded5', canvas: '#faf7f1', soft: '#f1ebe2', device: '#2c251d', head: '#f6efe7' },
+    ...createThemeConfig({
+      colors: { ...defaultThemeColors, ocean: '#2c251d', ink: '#2c251d', muted: '#7b7169', line: '#e5ded5', canvas: '#faf7f1', soft: '#f1ebe2', device: '#2c251d', head: '#f6efe7' },
+      designColors: { ...defaultDesignColors, primary: '#2c251d', ink: '#2c251d', body: '#2c251d', inkMuted48: '#7b7169', hairline: '#e5ded5', canvasParchment: '#faf7f1', surfacePearl: '#f1ebe2' },
+    }),
   },
   {
     id: 'calm',
     nameKey: 'themeCalm',
     descriptionKey: 'themeCalmDesc',
-    colors: { ...defaultThemeColors, ocean: '#24445c', ink: '#17242e', muted: '#647682', line: '#d6e0e6', canvas: '#f2f7f9', soft: '#e8f0f4', device: '#24445c', head: '#eef4f7' },
+    ...createThemeConfig({
+      colors: { ...defaultThemeColors, ocean: '#24445c', ink: '#17242e', muted: '#647682', line: '#d6e0e6', canvas: '#f2f7f9', soft: '#e8f0f4', device: '#24445c', head: '#eef4f7' },
+      designColors: { ...defaultDesignColors, primary: '#24445c', ink: '#17242e', body: '#17242e', inkMuted48: '#647682', hairline: '#d6e0e6', canvasParchment: '#f2f7f9', surfacePearl: '#e8f0f4' },
+    }),
   },
   {
     id: 'spotify',
     nameKey: 'themeSpotify',
     descriptionKey: 'themeSpotifyDesc',
-    colors: { ...defaultThemeColors, ocean: '#1ed760', ink: '#ffffff', muted: '#b5b5b5', line: '#424242', canvas: '#121212', soft: '#181818', panel: '#202020', device: '#181818', head: '#252525', success: '#1ed760' },
+    ...createThemeConfig({
+      colors: { ...defaultThemeColors, ocean: '#1ed760', ink: '#ffffff', muted: '#b5b5b5', line: '#424242', canvas: '#121212', soft: '#181818', panel: '#202020', device: '#181818', head: '#252525', success: '#1ed760' },
+      designColors: { ...defaultDesignColors, primary: '#1ed760', ink: '#ffffff', body: '#ffffff', inkMuted48: '#b5b5b5', hairline: '#424242', canvas: '#202020', canvasParchment: '#121212', surfacePearl: '#181818', success: '#1ed760' },
+    }),
   },
   {
     id: 'meta',
     nameKey: 'themeMeta',
     descriptionKey: 'themeMetaDesc',
-    colors: { ...defaultThemeColors, ocean: '#0064e0', ink: '#1c1e21', muted: '#5d6c7b', line: '#ced0d4', canvas: '#ffffff', soft: '#f1f4f7', success: '#31a24c', danger: '#e41e3f' },
+    ...createThemeConfig({
+      colors: { ...defaultThemeColors, ocean: '#0064e0', ink: '#1c1e21', muted: '#5d6c7b', line: '#ced0d4', canvas: '#ffffff', soft: '#f1f4f7', success: '#31a24c', danger: '#e41e3f' },
+      designColors: { ...defaultDesignColors, primary: '#0064e0', primaryFocus: '#0064e0', ink: '#1c1e21', body: '#1c1e21', inkMuted48: '#5d6c7b', hairline: '#ced0d4', canvasParchment: '#ffffff', surfacePearl: '#f1f4f7', success: '#31a24c', danger: '#e41e3f' },
+    }),
   },
   {
     id: 'uber',
     nameKey: 'themeUber',
     descriptionKey: 'themeUberDesc',
-    colors: { ...defaultThemeColors, ocean: '#000000', ink: '#000000', muted: '#8c8c8c', line: '#e2e2e2', canvas: '#ffffff', soft: '#efefef', device: '#000000', dark: '#282828' },
+    ...createThemeConfig({
+      colors: { ...defaultThemeColors, ocean: '#000000', ink: '#000000', muted: '#8c8c8c', line: '#e2e2e2', canvas: '#ffffff', soft: '#efefef', device: '#000000', dark: '#282828' },
+      designColors: { ...defaultDesignColors, primary: '#000000', primaryFocus: '#000000', ink: '#000000', body: '#000000', inkMuted48: '#8c8c8c', hairline: '#e2e2e2', canvasParchment: '#ffffff', surfacePearl: '#efefef', surfaceTile3: '#282828' },
+    }),
   },
 ]
 
-const themeColorFields: Array<{ key: ThemeColorKey; labelKey: string; descKey: string }> = [
-  { key: 'ocean', labelKey: 'themeColorOcean', descKey: 'themeColorOceanDesc' },
-  { key: 'ink', labelKey: 'themeColorInk', descKey: 'themeColorInkDesc' },
-  { key: 'muted', labelKey: 'themeColorMuted', descKey: 'themeColorMutedDesc' },
-  { key: 'line', labelKey: 'themeColorLine', descKey: 'themeColorLineDesc' },
-  { key: 'canvas', labelKey: 'themeColorCanvas', descKey: 'themeColorCanvasDesc' },
-  { key: 'soft', labelKey: 'themeColorSoft', descKey: 'themeColorSoftDesc' },
-  { key: 'panel', labelKey: 'themeColorPanel', descKey: 'themeColorPanelDesc' },
-  { key: 'success', labelKey: 'themeColorSuccess', descKey: 'themeColorSuccessDesc' },
-  { key: 'warning', labelKey: 'themeColorWarning', descKey: 'themeColorWarningDesc' },
-  { key: 'danger', labelKey: 'themeColorDanger', descKey: 'themeColorDangerDesc' },
-  { key: 'dark', labelKey: 'themeColorDark', descKey: 'themeColorDarkDesc' },
-  { key: 'device', labelKey: 'themeColorDevice', descKey: 'themeColorDeviceDesc' },
-  { key: 'head', labelKey: 'themeColorHead', descKey: 'themeColorHeadDesc' },
+const themeColorFields: Array<{ key: ThemeColorKey; designKey: DesignColorKey; label: string; description: string }> = [
+  { key: 'ocean', designKey: 'primary', label: '主操作色', description: '按钮、链接、焦点强调' },
+  { key: 'ink', designKey: 'ink', label: '主要文字', description: '标题、正文和深色控件' },
+  { key: 'muted', designKey: 'inkMuted48', label: '次级文字', description: '说明、禁用和弱提示' },
+  { key: 'line', designKey: 'hairline', label: '发丝线', description: '卡片、输入框和分隔线' },
+  { key: 'canvas', designKey: 'canvasParchment', label: '页面背景', description: '浅灰画布和分区背景' },
+  { key: 'soft', designKey: 'surfacePearl', label: '浅色控件底', description: '次级按钮、轻量容器' },
+  { key: 'panel', designKey: 'canvas', label: '面板底色', description: '弹层、卡片和主内容面板' },
+  { key: 'success', designKey: 'success', label: '成功状态', description: '成功反馈和通过状态' },
+  { key: 'warning', designKey: 'warning', label: '警告状态', description: '版本提醒、同步警告' },
+  { key: 'danger', designKey: 'danger', label: '危险状态', description: '错误、删除和冲突' },
+  { key: 'dark', designKey: 'surfaceTile3', label: '深色块', description: '深色区域和暗色强调' },
+  { key: 'device', designKey: 'ink', label: '设备边框', description: '手机和桌面设备外框' },
+  { key: 'head', designKey: 'canvasParchment', label: '顶部浅底', description: '导航和头部浅背景' },
 ]
+
+const themeDesignColorFields: Array<{ key: DesignColorKey; label: string; description: string }> = [
+  { key: 'primary', label: 'Primary', description: '设计系统主操作色' },
+  { key: 'primaryFocus', label: 'Focus', description: '焦点和选中边框' },
+  { key: 'primaryOnDark', label: 'On Dark', description: '深色背景链接色' },
+  { key: 'canvas', label: 'Canvas', description: '主画布白色' },
+  { key: 'canvasParchment', label: 'Parchment', description: '浅灰分区背景' },
+  { key: 'ink', label: 'Ink', description: '浅色背景主要文字' },
+  { key: 'hairline', label: 'Hairline', description: '1px 边框' },
+  { key: 'surfacePearl', label: 'Pearl', description: '浅色控件填充' },
+]
+
+const themeTypographyFields: Array<{ key: ThemeTypographyKey; label: string; description: string }> = [
+  { key: 'bodyFamily', label: '正文字体', description: '正文、按钮和表单字体栈' },
+  { key: 'displayFamily', label: '标题字体', description: '标题和展示文字字体栈' },
+  { key: 'bodySize', label: '正文字号', description: '默认正文和按钮字号' },
+]
+
+const themeRadiusFields: Array<{ key: ThemeRadiusKey; label: string; description: string }> = [
+  { key: 'sm', label: '紧凑圆角', description: '紧凑按钮、内嵌图片' },
+  { key: 'lg', label: '卡片圆角', description: '卡片和网格容器' },
+  { key: 'pill', label: '胶囊圆角', description: '主按钮、搜索框和芯片' },
+]
+
+const themeCopy: Record<string, { name: string; description: string }> = {
+  themeDefault: { name: '默认', description: '沿用当前内核配色' },
+  themeApple: { name: 'Apple DS', description: '按 DESIGN.md 映射的设计系统' },
+  themeWarm: { name: '暖色', description: '柔和米色原型评审风格' },
+  themeCalm: { name: '冷静', description: '低饱和蓝灰风格' },
+  themeSpotify: { name: 'Spotify', description: '深色高对比预设' },
+  themeMeta: { name: 'Meta', description: '蓝色产品工具风格' },
+  themeUber: { name: 'Uber', description: '黑白高对比预设' },
+  themeCustom: { name: '自定义', description: '来自面板编辑或 JSON 导入' },
+}
 
 const CUSTOM_THEME_STORAGE_KEY = 'prototype-core-custom-theme'
 const ANNOTATION_AUTHOR_STORAGE_KEY = 'prototype-core-annotation-author'
@@ -140,7 +299,7 @@ const mode = ref<Mode>('interactive')
 const currentScreen = ref<string>('splash')
 const selectedFlowId = ref('')
 const selectedThemeId = ref<ThemeId>('default')
-const customThemeColors = ref<Record<ThemeColorKey, string>>({ ...defaultThemeColors })
+const customThemeConfig = ref<PrototypeThemeConfig>(createThemeConfig())
 const showThemePanel = ref(false)
 const themeImportInput = ref<HTMLInputElement | null>(null)
 const flowZoom = ref(0.42)
@@ -284,14 +443,64 @@ function hexToRgbTriplet(hex: string) {
   return `${(numeric >> 16) & 255} ${(numeric >> 8) & 255} ${numeric & 255}`
 }
 
+function camelToKebab(value: string) {
+  return value.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)
+}
+
+function mergeThemeFromStored(storedTheme: StoredTheme): PrototypeThemeConfig {
+  const colors = { ...defaultThemeColors }
+  Object.entries(storedTheme.colors ?? {}).forEach(([key, value]) => {
+    if (themeColorFields.some((field) => field.key === key) && typeof value === 'string' && isHexColor(value)) colors[key as ThemeColorKey] = value
+  })
+
+  const designColors = { ...defaultDesignColors }
+  Object.entries(storedTheme.designColors ?? {}).forEach(([key, value]) => {
+    if (themeDesignColorFields.some((field) => field.key === key) && typeof value === 'string' && isHexColor(value)) designColors[key as DesignColorKey] = value
+  })
+  themeColorFields.forEach((field) => {
+    if (!storedTheme.designColors?.[field.designKey]) designColors[field.designKey] = colors[field.key]
+  })
+
+  const typography = { ...defaultTypography }
+  Object.entries(storedTheme.typography ?? {}).forEach(([key, value]) => {
+    if (themeTypographyFields.some((field) => field.key === key) && typeof value === 'string' && value.trim()) typography[key as ThemeTypographyKey] = value.trim()
+  })
+
+  const radius = { ...defaultRadius }
+  Object.entries(storedTheme.radius ?? {}).forEach(([key, value]) => {
+    if (themeRadiusFields.some((field) => field.key === key) && typeof value === 'string' && value.trim()) radius[key as ThemeRadiusKey] = value.trim()
+  })
+
+  const spacing = { ...defaultSpacing }
+  Object.entries(storedTheme.spacing ?? {}).forEach(([key, value]) => {
+    if (key in spacing && typeof value === 'string' && value.trim()) spacing[key as ThemeSpacingKey] = value.trim()
+  })
+
+  const shadow = { ...defaultShadow }
+  Object.entries(storedTheme.shadow ?? {}).forEach(([key, value]) => {
+    if (key in shadow && typeof value === 'string' && value.trim()) shadow[key as ThemeShadowKey] = value.trim()
+  })
+
+  return { colors, designColors, typography, radius, spacing, shadow }
+}
+
 const themeOptions = computed(() => [
   ...themePresets,
-  { id: 'custom' as ThemeId, nameKey: 'themeCustom', descriptionKey: 'themeCustomDesc', colors: customThemeColors.value },
+  { id: 'custom' as ThemeId, nameKey: 'themeCustom', descriptionKey: 'themeCustomDesc', ...customThemeConfig.value },
 ])
-const activeThemeColors = computed(() => themeOptions.value.find((theme) => theme.id === selectedThemeId.value)?.colors ?? defaultThemeColors)
-const themeStyle = computed<CSSProperties>(() =>
-  Object.fromEntries(Object.entries(activeThemeColors.value).map(([key, value]) => [`--color-${key}`, hexToRgbTriplet(value)])),
-)
+const activeTheme = computed(() => themeOptions.value.find((theme) => theme.id === selectedThemeId.value) ?? themePresets[0])
+const activeThemeColors = computed(() => activeTheme.value.colors)
+const activeDesignColors = computed(() => activeTheme.value.designColors)
+const themeStyle = computed<CSSProperties>(() => {
+  const entries: Array<[string, string]> = []
+  Object.entries(activeTheme.value.colors).forEach(([key, value]) => entries.push([`--color-${key}`, hexToRgbTriplet(value)]))
+  Object.entries(activeTheme.value.designColors).forEach(([key, value]) => entries.push([`--ds-color-${camelToKebab(key)}`, hexToRgbTriplet(value)]))
+  Object.entries(activeTheme.value.typography).forEach(([key, value]) => entries.push([`--ds-font-${camelToKebab(key)}`, value]))
+  Object.entries(activeTheme.value.radius).forEach(([key, value]) => entries.push([`--ds-rounded-${camelToKebab(key)}`, value]))
+  Object.entries(activeTheme.value.spacing).forEach(([key, value]) => entries.push([`--ds-spacing-${camelToKebab(key)}`, value]))
+  Object.entries(activeTheme.value.shadow).forEach(([key, value]) => entries.push([`--ds-shadow-${camelToKebab(key)}`, value]))
+  return Object.fromEntries(entries)
+})
 
 function selectTheme(id: ThemeId) {
   selectedThemeId.value = id
@@ -299,17 +508,53 @@ function selectTheme(id: ThemeId) {
 
 function updateCustomThemeColor(key: ThemeColorKey, value: string) {
   if (!isHexColor(value)) return
-  customThemeColors.value = { ...customThemeColors.value, [key]: value }
+  const mappedDesignKey = themeColorFields.find((field) => field.key === key)?.designKey
+  customThemeConfig.value = {
+    ...customThemeConfig.value,
+    colors: { ...customThemeConfig.value.colors, [key]: value },
+    designColors: mappedDesignKey ? { ...customThemeConfig.value.designColors, [mappedDesignKey]: value } : customThemeConfig.value.designColors,
+  }
+  selectedThemeId.value = 'custom'
+}
+
+function updateCustomThemeDesignColor(key: DesignColorKey, value: string) {
+  if (!isHexColor(value)) return
+  const mappedColorKey = themeColorFields.find((field) => field.designKey === key)?.key
+  customThemeConfig.value = {
+    ...customThemeConfig.value,
+    colors: mappedColorKey ? { ...customThemeConfig.value.colors, [mappedColorKey]: value } : customThemeConfig.value.colors,
+    designColors: { ...customThemeConfig.value.designColors, [key]: value },
+  }
+  selectedThemeId.value = 'custom'
+}
+
+function updateCustomThemeTypography(key: ThemeTypographyKey, value: string) {
+  if (!value.trim()) return
+  customThemeConfig.value = { ...customThemeConfig.value, typography: { ...customThemeConfig.value.typography, [key]: value.trim() } }
+  selectedThemeId.value = 'custom'
+}
+
+function updateCustomThemeRadius(key: ThemeRadiusKey, value: string) {
+  if (!value.trim()) return
+  customThemeConfig.value = { ...customThemeConfig.value, radius: { ...customThemeConfig.value.radius, [key]: value.trim() } }
   selectedThemeId.value = 'custom'
 }
 
 function resetCustomTheme() {
-  customThemeColors.value = { ...defaultThemeColors }
+  customThemeConfig.value = createThemeConfig()
   selectedThemeId.value = 'default'
 }
 
+function themeLabel(theme: ThemePreset) {
+  return themeCopy[theme.nameKey]?.name ?? theme.nameKey
+}
+
+function themeDescription(theme: ThemePreset) {
+  return themeCopy[theme.nameKey]?.description ?? theme.descriptionKey
+}
+
 function exportCustomTheme() {
-  const blob = new Blob([JSON.stringify({ selectedThemeId: 'custom', colors: customThemeColors.value }, null, 2)], { type: 'application/json;charset=utf-8' })
+  const blob = new Blob([JSON.stringify({ version: 2, selectedThemeId: 'custom', ...customThemeConfig.value }, null, 2)], { type: 'application/json;charset=utf-8' })
   const link = document.createElement('a')
   link.href = URL.createObjectURL(blob)
   link.download = 'prototype-core-theme.json'
@@ -324,13 +569,7 @@ function importCustomTheme(event: Event) {
   reader.onload = () => {
     try {
       const parsed = JSON.parse(String(reader.result)) as StoredTheme
-      const next = { ...defaultThemeColors }
-      Object.entries(parsed.colors ?? {}).forEach(([key, value]) => {
-        if (themeColorFields.some((field) => field.key === key) && typeof value === 'string' && isHexColor(value)) {
-          next[key as ThemeColorKey] = value
-        }
-      })
-      customThemeColors.value = next
+      customThemeConfig.value = mergeThemeFromStored(parsed)
       selectedThemeId.value = 'custom'
     } catch {
       annotationSyncLabel.value = '主题文件解析失败'
@@ -596,8 +835,8 @@ async function initializePrototype() {
 
   try {
     const storedTheme = JSON.parse(storage()?.getItem(CUSTOM_THEME_STORAGE_KEY) ?? 'null') as StoredTheme | null
-    if (storedTheme?.colors) {
-      customThemeColors.value = { ...defaultThemeColors, ...Object.fromEntries(Object.entries(storedTheme.colors).filter(([, value]) => typeof value === 'string' && isHexColor(value))) }
+    if (storedTheme?.colors || storedTheme?.designColors || storedTheme?.typography || storedTheme?.radius || storedTheme?.spacing || storedTheme?.shadow) {
+      customThemeConfig.value = mergeThemeFromStored(storedTheme)
       selectedThemeId.value = storedTheme.selectedThemeId ?? selectedThemeId.value
     }
   } catch {
@@ -659,8 +898,8 @@ async function initializePrototype() {
   collaborationInitialized.value = true
 }
 
-watch([customThemeColors, selectedThemeId], () => {
-  storage()?.setItem(CUSTOM_THEME_STORAGE_KEY, JSON.stringify({ selectedThemeId: selectedThemeId.value, colors: customThemeColors.value }))
+watch([customThemeConfig, selectedThemeId], () => {
+  storage()?.setItem(CUSTOM_THEME_STORAGE_KEY, JSON.stringify({ version: 2, selectedThemeId: selectedThemeId.value, ...customThemeConfig.value }))
 }, { deep: true })
 
 watch(annotationAuthorName, (value) => {
@@ -1416,6 +1655,9 @@ export function usePrototypeContext() {
     RotateCcw,
     SunMedium,
     themeColorFields,
+    themeDesignColorFields,
+    themeTypographyFields,
+    themeRadiusFields,
     lang,
     mode,
     currentScreen,
@@ -1457,8 +1699,11 @@ export function usePrototypeContext() {
     pageDescriptionManifest,
     pageDescriptionEditor,
     activeThemeColors,
+    activeDesignColors,
     themeOptions,
     themeStyle,
+    themeLabel,
+    themeDescription,
     screens,
     mainFlows,
     showFlowEditor,
@@ -1488,6 +1733,9 @@ export function usePrototypeContext() {
     t,
     selectTheme,
     updateCustomThemeColor,
+    updateCustomThemeDesignColor,
+    updateCustomThemeTypography,
+    updateCustomThemeRadius,
     resetCustomTheme,
     exportCustomTheme,
     importCustomTheme,

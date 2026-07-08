@@ -47,7 +47,7 @@ declare global {
     __PROTOTYPE_CORE__?: PrototypeCoreCommands
   }
 }
-export type ThemeId = 'default' | 'warm' | 'calm' | 'spotify' | 'meta' | 'uber' | 'custom'
+export type ThemeId = 'default' | 'apple' | 'warm' | 'calm' | 'spotify' | 'meta' | 'uber' | 'custom'
 export type ThemeColorKey =
   | 'ocean'
   | 'ink'
@@ -62,6 +62,49 @@ export type ThemeColorKey =
   | 'dark'
   | 'device'
   | 'head'
+
+export type DesignColorKey =
+  | 'primary'
+  | 'primaryFocus'
+  | 'primaryOnDark'
+  | 'canvas'
+  | 'canvasParchment'
+  | 'surfacePearl'
+  | 'surfaceTile1'
+  | 'surfaceTile2'
+  | 'surfaceTile3'
+  | 'surfaceBlack'
+  | 'surfaceChipTranslucent'
+  | 'ink'
+  | 'body'
+  | 'bodyOnDark'
+  | 'bodyMuted'
+  | 'inkMuted80'
+  | 'inkMuted48'
+  | 'dividerSoft'
+  | 'hairline'
+  | 'success'
+  | 'warning'
+  | 'danger'
+
+export type ThemeTypographyKey =
+  | 'displayFamily'
+  | 'bodyFamily'
+  | 'heroSize'
+  | 'displayLgSize'
+  | 'displayMdSize'
+  | 'leadSize'
+  | 'bodySize'
+  | 'captionSize'
+  | 'finePrintSize'
+  | 'displayWeight'
+  | 'bodyWeight'
+  | 'lightWeight'
+  | 'bodyLineHeight'
+
+export type ThemeRadiusKey = 'none' | 'xs' | 'sm' | 'md' | 'lg' | 'pill'
+export type ThemeSpacingKey = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'section'
+export type ThemeShadowKey = 'product' | 'soft'
 
 export type ScreenId = string
 export type ScreenPlatform = 'mobile' | 'pc'
@@ -108,11 +151,19 @@ export interface DisplayScreen extends ScreenMeta {
   hasNext?: boolean
 }
 
-export interface ThemePreset {
+export interface PrototypeThemeConfig {
+  colors: Record<ThemeColorKey, string>
+  designColors: Record<DesignColorKey, string>
+  typography: Record<ThemeTypographyKey, string>
+  radius: Record<ThemeRadiusKey, string>
+  spacing: Record<ThemeSpacingKey, string>
+  shadow: Record<ThemeShadowKey, string>
+}
+
+export interface ThemePreset extends PrototypeThemeConfig {
   id: ThemeId
   nameKey: string
   descriptionKey: string
-  colors: Record<ThemeColorKey, string>
 }
 
 export interface PrototypeStateOption {
@@ -121,7 +172,13 @@ export interface PrototypeStateOption {
 }
 
 export interface StoredTheme {
+  version?: number
   colors?: Partial<Record<ThemeColorKey, string>>
+  designColors?: Partial<Record<DesignColorKey, string>>
+  typography?: Partial<Record<ThemeTypographyKey, string>>
+  radius?: Partial<Record<ThemeRadiusKey, string>>
+  spacing?: Partial<Record<ThemeSpacingKey, string>>
+  shadow?: Partial<Record<ThemeShadowKey, string>>
   selectedThemeId?: ThemeId
 }
 

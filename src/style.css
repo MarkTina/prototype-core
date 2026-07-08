@@ -18,6 +18,55 @@
     --color-device: 29 29 31;
     --color-head: 245 245 247;
     --shadow-soft-color: 17 24 39;
+    --ds-color-primary: 0 102 204;
+    --ds-color-primary-focus: 0 113 227;
+    --ds-color-primary-on-dark: 41 151 255;
+    --ds-color-canvas: 255 255 255;
+    --ds-color-canvas-parchment: 245 245 247;
+    --ds-color-surface-pearl: 250 250 252;
+    --ds-color-surface-tile-1: 39 39 41;
+    --ds-color-surface-tile-2: 42 42 44;
+    --ds-color-surface-tile-3: 37 37 39;
+    --ds-color-surface-black: 0 0 0;
+    --ds-color-surface-chip-translucent: 210 210 215;
+    --ds-color-ink: 29 29 31;
+    --ds-color-body: 29 29 31;
+    --ds-color-body-on-dark: 255 255 255;
+    --ds-color-body-muted: 204 204 204;
+    --ds-color-ink-muted-80: 51 51 51;
+    --ds-color-ink-muted-48: 122 122 122;
+    --ds-color-divider-soft: 240 240 240;
+    --ds-color-hairline: 224 224 224;
+    --ds-color-success: 34 197 94;
+    --ds-color-warning: 245 158 11;
+    --ds-color-danger: 201 60 55;
+    --ds-font-display-family: "SF Pro Display", system-ui, -apple-system, sans-serif;
+    --ds-font-body-family: "SF Pro Text", system-ui, -apple-system, sans-serif;
+    --ds-font-hero-size: 56px;
+    --ds-font-display-lg-size: 40px;
+    --ds-font-display-md-size: 34px;
+    --ds-font-lead-size: 28px;
+    --ds-font-body-size: 17px;
+    --ds-font-caption-size: 14px;
+    --ds-font-fine-print-size: 12px;
+    --ds-font-display-weight: 600;
+    --ds-font-body-weight: 400;
+    --ds-font-light-weight: 300;
+    --ds-font-body-line-height: 1.47;
+    --ds-rounded-none: 0px;
+    --ds-rounded-xs: 5px;
+    --ds-rounded-sm: 8px;
+    --ds-rounded-md: 11px;
+    --ds-rounded-lg: 18px;
+    --ds-rounded-pill: 9999px;
+    --ds-spacing-xs: 8px;
+    --ds-spacing-sm: 12px;
+    --ds-spacing-md: 17px;
+    --ds-spacing-lg: 24px;
+    --ds-spacing-xl: 32px;
+    --ds-spacing-section: 80px;
+    --ds-shadow-product: rgba(0, 0, 0, 0.22) 3px 5px 30px 0;
+    --ds-shadow-soft: 0 16px 40px rgba(17, 24, 39, 0.08);
   }
 
   * {
@@ -26,7 +75,7 @@
 
   body {
     margin: 0;
-    font-family: theme('fontFamily.sans');
+    font-family: var(--ds-font-body-family), theme('fontFamily.sans');
     -webkit-font-smoothing: antialiased;
   }
 
@@ -930,13 +979,23 @@
   }
 
   .theme-scheme-btn b,
-  .theme-color-field b {
+  .theme-color-field b,
+  .theme-token-field b {
     @apply block text-xs font-semibold text-ink;
   }
 
   .theme-scheme-btn small,
-  .theme-color-field small {
+  .theme-color-field small,
+  .theme-token-field small {
     @apply mt-0.5 block text-[10px] font-normal leading-3 text-muted;
+  }
+
+  .theme-section-title {
+    @apply mt-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted;
+  }
+
+  .theme-icon-btn {
+    @apply flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-line bg-panel text-ink transition hover:border-ocean/35 hover:bg-soft active:scale-95;
   }
 
   .theme-swatch {
@@ -948,8 +1007,16 @@
     @apply mt-3 grid grid-cols-2 gap-2;
   }
 
+  .theme-token-grid {
+    @apply mt-3 grid grid-cols-2 gap-2;
+  }
+
   .theme-color-field {
     @apply flex min-w-0 items-center gap-2.5 rounded-[14px] border border-line bg-soft px-3 py-1.5;
+  }
+
+  .theme-token-field {
+    @apply flex min-w-0 items-center gap-2.5 rounded-[14px] border border-line bg-soft px-3 py-2;
   }
 
   .theme-color-field input[type='color'] {
@@ -960,8 +1027,17 @@
     @apply min-w-0 flex-1;
   }
 
-  .theme-color-field input[type='text'] {
+  .theme-token-field span {
+    @apply min-w-0 flex-1;
+  }
+
+  .theme-color-field input[type='text'],
+  .theme-token-field input[type='text'] {
     @apply w-24 shrink-0 rounded-[8px] border border-line bg-panel px-2 py-1 text-xs font-semibold text-muted outline-none;
+  }
+
+  .theme-token-field input[type='text'] {
+    @apply w-40;
   }
 
   .theme-file-btn {

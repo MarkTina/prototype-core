@@ -17,10 +17,11 @@
 
 1. `HANDOFF.md`：确认稳定边界、当前限制和待办。
 2. `README.md`：确认安装、公共 API 和发布方式。
-3. 涉及消费者项目接入或业务原型实施时，完整阅读 `AI-PROTOTYPE-GUIDE.md`。
-4. `src/core/` 与 `src/types/prototype.ts`：确认公共契约。
-5. 涉及运行行为时再检查 `src/prototype/`、`src/App.vue` 和 `examples/basic/`。
-6. 修改前运行 `git status --short`，不要覆盖用户改动。
+3. 涉及 UI、主题、样式或消费者页面实现时，先读 `DESIGN.md` 和 `DESIGN-TOKENS.md`。
+4. 涉及消费者项目接入或业务原型实施时，完整阅读 `AI-PROTOTYPE-GUIDE.md`。
+5. `src/core/` 与 `src/types/prototype.ts`：确认公共契约。
+6. 涉及运行行为时再检查 `src/prototype/`、`src/App.vue` 和 `examples/basic/`。
+7. 修改前运行 `git status --short`，不要覆盖用户改动。
 
 ## 关键事实与陷阱
 
@@ -30,7 +31,9 @@
 - Vue 与 `@lucide/vue` 是 peer dependencies，禁止打入运行包造成重复实例。
 - `examples/basic` 是端到端契约测试，不承载真实产品需求。
 - 开发与预览服务必须监听 `0.0.0.0`；启动前检查端口，只关闭本次启动的进程。
-- `#/prototype-core-help` 是公开通用帮助路由，内容来自构建时内嵌的 `AI-PROTOTYPE-GUIDE.md`；不得在帮助页混入消费者数据或运行配置。
+- `#/prototype-core-help` 是公开通用帮助路由，内容来自构建时内嵌的 `AI-PROTOTYPE-GUIDE.md`；`#/prototype-core-theme` 是公开通用主题准则路由，内容来自构建时内嵌的 `DESIGN-TOKENS.md`；不得在这些页面混入消费者数据或运行配置。
+- UI 设计系统以 `DESIGN.md` 为事实来源，`DESIGN-TOKENS.md` 为实现索引；新增 UI 优先使用 `--ds-*` 变量，设计系统已有变量不得无理由硬编码。
+- 消费者页面实现也应优先使用设计 token；内核不强制扫描或改写消费者业务代码。
 
 ## Gitee 协作资源通用契约
 
@@ -75,6 +78,14 @@ pnpm pack:check
 - 公共 API 或类型变化：必须构建内核和示例，并用 `.tgz` 做独立消费者安装测试。
 - 发布前检查 tarball 内容、运行 Secret 扫描，并确认标签严格等于 `v<package.version>`。
 - 项目现状、限制或长期决策变化时，按 `handoff-maintainer` 更新 `HANDOFF.md`。
+
+## 连续性维护
+
+- 当项目内容发生重大变更、会话交接或用户要求同步上下文时，调用 `handoff-maintainer` 更新 `HANDOFF.md`。
+- 更新前优先查看 git 记录；不足时再检索项目文件。
+- 只修改受影响章节，决策记录使用 ADR-lite 格式，总数不超过 10 条。
+- `待处理事项` 保持最多 3 条未完成可见，完成项应沉淀为稳定事实或直接清理。
+- 每次更新后刷新 `HANDOFF.md` 底部的 `fresh-meta` 块。
 
 ## 发布与密钥
 

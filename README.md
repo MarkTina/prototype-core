@@ -27,6 +27,8 @@ void mountPrototypeApp({
 
 已挂载内核的应用可直接访问 `#/prototype-core-help` 阅读并复制同一份手册；该帮助路由只包含公开通用规则，不读取消费者业务数据。
 
+涉及 UI 或主题实现时，可访问 `#/prototype-core-theme` 阅读并复制主题实现准则；该页面内容来自构建时内嵌的 `DESIGN-TOKENS.md`。
+
 AI 修改消费者 `page-descriptions.json` 后，可在已启用 Gitee 协作的应用页面上下文执行 `await window.__PROTOTYPE_CORE__.syncPageDescriptionsFromJson()`。该指令以 Gitee 为唯一真值，完成逐 scope 写入、manifest 合并、远端回读和缓存刷新；不会删除 JSON 中未列出的远端 scope。
 
 数据源面板会根据 `runtimeConfig` 检查 Gitee、OSS、原型访问和 Bug 删除密码是否齐全。部署变量不能在浏览器中直接读取，消费者只能传入是否存在，禁止传入真实值：
