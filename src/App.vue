@@ -2121,7 +2121,7 @@ onBeforeUnmount(() => {
             </button>
           </div>
         </label>
-        <p class="annotation-polling-notice">{{ annotationPollingNotice }}</p>
+        <p v-if="annotationPollingNotice" class="annotation-polling-notice">{{ annotationPollingNotice }}</p>
         <div v-if="activeCollaborationTab === 'annotations'" class="annotation-list">
           <p v-if="!currentScreenAnnotations.length" class="annotation-empty">{{ t('annotationEmpty') }}</p>
           <section v-for="(annotation, index) in currentScreenAnnotations" :key="annotation.id" @mouseenter="handleAnnotationListMouseEnter(annotation)" @mouseleave="scheduleHideAnnotationPopover">

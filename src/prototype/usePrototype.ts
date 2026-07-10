@@ -418,6 +418,18 @@ function setCollaborationSource(kind: CollaborationDataKind, source: DataSource,
   }
 }
 
+function rememberRemoteRevision(kind: CollaborationDataKind, revision: string | null, fromPolling: boolean, label: string, scopeId?: string) {
+  if (!fromPolling || !revision) return
+  const previous = kind === 'flows'
+    ? readCollaborationCache<MainFlow[]>('flows')?.revision
+    : kind === 'annotations'
+      ? readScopedCollaborationCache<PrototypeAnnotation[]>('annotations').scopes[scopeId ?? '']?.revision
+      : readScopedCollaborationCache<PrototypePageDescription>('pageDescriptions').scopes[scopeId ?? '']?.revision
+  if (previous && previous !== revision) {
+    annotationPollingNotice.value = `检测到远端${label}更新，已同步到当前页面`
+  }
+}
+
 function markCollaborationConflict(kind: CollaborationDataKind, message: string) {
   setCollaborationSource(kind, collaborationSources.value[kind].source, 'conflict', message)
   annotationSyncStatus.value = 'error'
@@ -949,25 +961,28 @@ function updatePageDescriptionManifest(screenId: string, stateId: string | undef
   pageDescriptionManifest.value = existing
 }
 
-async function loadScreenAnnotationsFromRemote(screenId: string, stateId = normalizePrototypeStateId(screenId, activePrototypeStateId.value)) {
+async function loadScreenAnnotationsFromRemote(screenId: string, stateId = normalizePrototypeStateId(screenId, activePrototypeStateId.value), fromPolling = false) {
   const remote = await loadRemoteScreenAnnotations(annotationScopeId(screenId, stateId))
   if (!remote) return false
+  const scopeId = annotationScopeId(screenId, stateId)
+  rememberRemoteRevision('annotations', remote.sha, fromPolling, '注释', scopeId)
   const next = normalizeAnnotations(remote.value).map((item) => ({ ...item, screenId, stateId }))
-  const merged = [...annotations.value.filter((item) => annotationScopeId(item.screenId, item.stateId) !== annotationScopeId(screenId, stateId)), ...next]
+  const merged = [...annotations.value.filter((item) => annotationScopeId(item.screenId, item.stateId) !== scopeId), ...next]
   const syncedAt = new Date().toISOString()
-  writeScopedCollaborationCache('annotations', annotationScopeId(screenId, stateId), next, remote.sha, syncedAt, 'synced')
+  writeScopedCollaborationCache('annotations', scopeId, next, remote.sha, syncedAt, 'synced')
   annotations.value = merged
   updateManifestCount(screenId, stateId, next.length)
   setCollaborationSource('annotations', 'gitee', 'success', remote.legacy ? '已读取主分支旧目录' : '', syncedAt)
   return true
 }
 
-async function loadCurrentPageDescriptionFromRemote() {
+async function loadCurrentPageDescriptionFromRemote(fromPolling = false) {
   const screenId = currentScreen.value
   const stateId = activePrototypeStateId.value
   const scopeId = annotationScopeId(screenId, stateId)
   const remote = await loadRemotePageDescription(annotationScopeId(screenId, stateId))
   if (!remote) return false
+  rememberRemoteRevision('pageDescriptions', remote.sha, fromPolling, '页面描述', scopeId)
   const value = normalizePageDescriptions([{ ...remote.value, screenId, stateId }])[0]
   if (!value) return
   const merged = [...pageDescriptions.value.filter((item) => annotationScopeId(item.screenId, item.stateId) !== scopeId), value]
@@ -991,7 +1006,7 @@ async function refreshPrototypeAnnotations(fromPolling = false) {
   try {
     const manifest = await loadRemoteAnnotationManifest()
     annotationManifest.value = manifest?.value ?? annotationManifest.value
-    const loaded = await loadScreenAnnotationsFromRemote(currentScreen.value, activePrototypeStateId.value)
+    const loaded = await loadScreenAnnotationsFromRemote(currentScreen.value, activePrototypeStateId.value, fromPolling)
     const currentScopeId = annotationScopeId(currentScreen.value, activePrototypeStateId.value)
     if (!loaded && !manifest?.value.scopes?.[currentScopeId]) {
       const merged = annotations.value.filter((item) => annotationScopeId(item.screenId, item.stateId) !== currentScopeId)
@@ -1025,7 +1040,7 @@ async function refreshPageDescriptions(fromPolling = false) {
   try {
     const manifest = await loadRemotePageDescriptionManifest()
     pageDescriptionManifest.value = manifest?.value ?? pageDescriptionManifest.value
-    const loaded = await loadCurrentPageDescriptionFromRemote()
+    const loaded = await loadCurrentPageDescriptionFromRemote(fromPolling)
     const currentScopeId = currentAnnotationScopeId()
     if (!loaded && !manifest?.value.scopes?.[currentScopeId]) {
       removeScopedCollaborationCache('pageDescriptions', currentScopeId)
@@ -1061,6 +1076,7 @@ async function refreshFlows(fromPolling = false) {
     const remote = await loadRemoteFlows()
     const flows = Array.isArray(remote?.value?.flows) ? remote.value.flows : null
     if (!remote || !flows) throw new Error('Gitee 流程文件不存在')
+    rememberRemoteRevision('flows', remote.sha, fromPolling, '流程')
     const syncedAt = new Date().toISOString()
     writeCollaborationCache('flows', flows, remote.sha, syncedAt, 'synced')
     mainFlows.value = readCollaborationCache<MainFlow[]>('flows')?.value ?? flows
