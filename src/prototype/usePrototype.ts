@@ -334,6 +334,13 @@ const annotations = ref<PrototypeAnnotation[]>([])
 const annotationManifest = ref<AnnotationManifest | null>(null)
 const pageDescriptions = ref<PrototypePageDescription[]>([])
 const pageDescriptionManifest = ref<AnnotationManifest | null>(null)
+const pageDescriptionSelectedSource = ref<DataSource>('local-seed')
+const pageDescriptionSourceSelectionTouched = ref(false)
+const pageDescriptionSourceValues = ref<Record<DataSource, Record<string, PrototypePageDescription>>>({
+  gitee: {},
+  'local-cache': {},
+  'local-seed': {},
+})
 const pageDescriptionEditor = ref({
   highlighted: false,
   highlightColor: '#ef4444',
@@ -702,7 +709,24 @@ function currentAnnotationScopeId() {
 }
 
 const currentScreenAnnotations = computed(() => annotations.value.filter((item) => annotationScopeId(item.screenId, item.stateId) === currentAnnotationScopeId()))
-const currentPageDescription = computed(() => pageDescriptions.value.find((item) => annotationScopeId(item.screenId, item.stateId) === currentAnnotationScopeId()) ?? null)
+const currentPageDescription = computed(() => pageDescriptionSourceValues.value[pageDescriptionSelectedSource.value][currentAnnotationScopeId()] ?? null)
+
+function pageDescriptionsByScope(descriptions: PrototypePageDescription[]) {
+  return Object.fromEntries(descriptions.map((description) => [annotationScopeId(description.screenId, description.stateId), description]))
+}
+
+function setPageDescriptionSourceValue(source: DataSource, scopeId: string, value: PrototypePageDescription | null) {
+  const next = { ...pageDescriptionSourceValues.value[source] }
+  if (value) next[scopeId] = value
+  else delete next[scopeId]
+  pageDescriptionSourceValues.value = { ...pageDescriptionSourceValues.value, [source]: next }
+}
+
+function selectPageDescriptionSource(source: DataSource) {
+  pageDescriptionSourceSelectionTouched.value = true
+  pageDescriptionSelectedSource.value = source
+  syncPageDescriptionEditor()
+}
 
 function isScopeHighlighted(scopeId: string): boolean {
   const fromManifest = pageDescriptionManifest.value?.scopes?.[scopeId]
@@ -899,6 +923,12 @@ async function initializePrototype() {
   const flowFallback = selectLocalFallback(flowCache, seeds.flows)
   annotations.value = annotationFallback.value
   pageDescriptions.value = descriptionFallback.value
+  pageDescriptionSourceValues.value = {
+    gitee: {},
+    'local-cache': pageDescriptionsByScope(cachedDescriptions),
+    'local-seed': pageDescriptionsByScope(seeds.pageDescriptions),
+  }
+  pageDescriptionSelectedSource.value = pageDescriptionSourceValues.value['local-cache'][currentAnnotationScopeId()] ? 'local-cache' : 'local-seed'
   mainFlows.value = flowFallback.value
   setCollaborationSource('annotations', annotationFallback.source, 'idle')
   setCollaborationSource('pageDescriptions', descriptionFallback.source, 'idle')
@@ -986,13 +1016,21 @@ async function loadCurrentPageDescriptionFromRemote(fromPolling = false) {
   rememberRemoteRevision('pageDescriptions', remote.sha, fromPolling, '页面描述', scopeId)
   const value = normalizePageDescriptions([{ ...remote.value, screenId, stateId }])[0]
   if (!value) return
-  const merged = [...pageDescriptions.value.filter((item) => annotationScopeId(item.screenId, item.stateId) !== scopeId), value]
   const syncedAt = new Date().toISOString()
-  writeScopedCollaborationCache('pageDescriptions', scopeId, value, remote.sha, syncedAt, 'synced')
-  pageDescriptions.value = merged
-  updatePageDescriptionManifest(screenId, stateId, 1, value.highlighted, value.highlightColor)
+  setPageDescriptionSourceValue('gitee', scopeId, value)
+  const cached = readScopedCollaborationCache<PrototypePageDescription>('pageDescriptions').scopes[scopeId]
+  if (cached?.status === 'pending') {
+    setCollaborationSource('pageDescriptions', 'local-cache', 'idle', '已读取 Gitee，本地缓存仍有待推送修改', syncedAt)
+  } else {
+    const merged = [...pageDescriptions.value.filter((item) => annotationScopeId(item.screenId, item.stateId) !== scopeId), value]
+    writeScopedCollaborationCache('pageDescriptions', scopeId, value, remote.sha, syncedAt, 'synced')
+    setPageDescriptionSourceValue('local-cache', scopeId, value)
+    pageDescriptions.value = merged
+    updatePageDescriptionManifest(screenId, stateId, 1, value.highlighted, value.highlightColor)
+    if (!pageDescriptionSourceSelectionTouched.value) pageDescriptionSelectedSource.value = 'gitee'
+    setCollaborationSource('pageDescriptions', 'gitee', 'success', remote.legacy ? '已读取主分支旧目录' : '', syncedAt)
+  }
   if (scopeId === currentAnnotationScopeId()) syncPageDescriptionEditor()
-  setCollaborationSource('pageDescriptions', 'gitee', 'success', remote.legacy ? '已读取主分支旧目录' : '', syncedAt)
   return true
 }
 
@@ -1044,17 +1082,26 @@ async function refreshPageDescriptions(fromPolling = false) {
     const loaded = await loadCurrentPageDescriptionFromRemote(fromPolling)
     const currentScopeId = currentAnnotationScopeId()
     if (!loaded && !manifest?.value.scopes?.[currentScopeId]) {
-      removeScopedCollaborationCache('pageDescriptions', currentScopeId)
-      pageDescriptions.value = pageDescriptions.value.filter((item) => annotationScopeId(item.screenId, item.stateId) !== currentScopeId)
+      setPageDescriptionSourceValue('gitee', currentScopeId, null)
+      const cached = readScopedCollaborationCache<PrototypePageDescription>('pageDescriptions').scopes[currentScopeId]
+      if (cached?.status === 'pending') {
+        setCollaborationSource('pageDescriptions', 'local-cache', 'idle', 'Gitee 当前 Scope 不存在，本地缓存待推送')
+      } else {
+        removeScopedCollaborationCache('pageDescriptions', currentScopeId)
+        setPageDescriptionSourceValue('local-cache', currentScopeId, null)
+        pageDescriptions.value = pageDescriptions.value.filter((item) => annotationScopeId(item.screenId, item.stateId) !== currentScopeId)
+        setCollaborationSource('pageDescriptions', 'gitee', 'success', '', new Date().toISOString())
+      }
       syncPageDescriptionEditor()
-      setCollaborationSource('pageDescriptions', 'gitee', 'success', '', new Date().toISOString())
     } else if (!loaded) throw new Error('Gitee 当前页面描述不存在')
     annotationSyncStatus.value = 'success'
-    annotationSyncLabel.value = '页面说明已同步'
+    annotationSyncLabel.value = collaborationSources.value.pageDescriptions.source === 'local-cache'
+      ? '已读取 Gitee，本地缓存待推送'
+      : '页面说明已同步'
   } catch (error) {
     const scopeId = currentAnnotationScopeId()
     const cached = readScopedCollaborationCache<PrototypePageDescription>('pageDescriptions').scopes[scopeId]
-    if (cached) writeScopedCollaborationCache('pageDescriptions', scopeId, cached.value, cached.revision, cached.lastRemoteSyncAt, 'stale', error instanceof Error ? error.message : '页面描述同步失败')
+    if (cached) writeScopedCollaborationCache('pageDescriptions', scopeId, cached.value, cached.revision, cached.lastRemoteSyncAt, cached.status === 'pending' ? 'pending' : 'stale', error instanceof Error ? error.message : '页面描述同步失败')
     annotationSyncStatus.value = 'error'
     annotationSyncLabel.value = '页面说明同步失败'
     setCollaborationSource('pageDescriptions', collaborationSources.value.pageDescriptions.source, 'error', error instanceof Error ? error.message : '页面描述同步失败')
@@ -1381,54 +1428,96 @@ function annotationCountByState(screenId: string, stateId: string) {
   return annotationManifest.value?.scopes?.[scopeId]?.count ?? annotations.value.filter((item) => annotationScopeId(item.screenId, item.stateId) === scopeId).length
 }
 
-async function saveCurrentPageDescription() {
+function buildCurrentPageDescription(): PrototypePageDescription {
   const screenId = currentScreen.value
   const stateId = activePrototypeStateId.value
   const now = new Date().toISOString()
-  const next: PrototypePageDescription = {
+  const current = currentPageDescription.value
+  return {
     screenId,
     stateId,
     ...pageDescriptionEditor.value,
     authorName: annotationAuthorName.value.trim() || '未署名',
+    createdAt: current?.createdAt ?? now,
     updatedAt: now,
   }
-  if (annotationRemoteReady.value) {
-    try {
-      const saved = await saveRemotePageDescription(annotationScopeId(screenId, stateId), next.authorName ?? '未署名', next)
-      if (!saved) return false
-      updatePageDescriptionManifest(screenId, stateId, 1, next.highlighted, next.highlightColor)
-      const merged = [...pageDescriptions.value.filter((item) => annotationScopeId(item.screenId, item.stateId) !== annotationScopeId(screenId, stateId)), next]
-      const syncedAt = new Date().toISOString()
-      writeScopedCollaborationCache('pageDescriptions', annotationScopeId(screenId, stateId), next, saved.sha, syncedAt, 'synced')
-      pageDescriptions.value = merged
-      if (pageDescriptionManifest.value) {
-        try {
-          await saveRemotePageDescriptionManifest(pageDescriptionManifest.value, next.authorName ?? '未署名', annotationScopeId(screenId, stateId))
-        } catch (error) {
-          setCollaborationSource('pageDescriptions', 'gitee', 'error', `页面描述已保存，但索引同步失败：${error instanceof Error ? error.message : '未知错误'}`, syncedAt)
-          return true
-        }
-      }
-      setCollaborationSource('pageDescriptions', 'gitee', 'success', '', syncedAt)
-      return true
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '页面描述保存失败'
-      if (error instanceof CollaborationConflictError) markCollaborationConflict('pageDescriptions', message)
-      else setCollaborationSource('pageDescriptions', collaborationSources.value.pageDescriptions.source, 'error', message)
-      return false
-    }
-  }
-  pageDescriptions.value = [...pageDescriptions.value.filter((item) => annotationScopeId(item.screenId, item.stateId) !== annotationScopeId(screenId, stateId)), next]
-  writeScopedCollaborationCache('pageDescriptions', annotationScopeId(screenId, stateId), next, null, null, 'pending')
-  setCollaborationSource('pageDescriptions', 'local-cache', 'success', collaborationContext.unavailableReason)
-  updatePageDescriptionManifest(screenId, stateId, 1, next.highlighted, next.highlightColor)
+}
+
+function saveCurrentPageDescriptionToCache() {
+  const next = buildCurrentPageDescription()
+  const scopeId = annotationScopeId(next.screenId, next.stateId)
+  const cached = readScopedCollaborationCache<PrototypePageDescription>('pageDescriptions').scopes[scopeId]
+  writeScopedCollaborationCache('pageDescriptions', scopeId, next, cached?.revision ?? null, cached?.lastRemoteSyncAt ?? null, 'pending')
+  setPageDescriptionSourceValue('local-cache', scopeId, next)
+  pageDescriptions.value = [...pageDescriptions.value.filter((item) => annotationScopeId(item.screenId, item.stateId) !== scopeId), next]
+  updatePageDescriptionManifest(next.screenId, next.stateId, 1, next.highlighted, next.highlightColor)
+  setCollaborationSource('pageDescriptions', 'local-cache', 'success', '页面描述已保存到本地缓存，尚未推送 Gitee')
   return true
+}
+
+async function savePageDescriptionToGitee(next: PrototypePageDescription) {
+  if (!collaborationContext.remoteWritable) {
+    setCollaborationSource('pageDescriptions', pageDescriptionSelectedSource.value, 'error', collaborationContext.unavailableReason || 'Gitee 当前不可写')
+    return false
+  }
+  const scopeId = annotationScopeId(next.screenId, next.stateId)
+  try {
+    const saved = await saveRemotePageDescription(scopeId, next.authorName ?? '未署名', next)
+    if (!saved) return false
+    updatePageDescriptionManifest(next.screenId, next.stateId, 1, next.highlighted, next.highlightColor)
+    if (!pageDescriptionManifest.value) return false
+    const savedManifest = await saveRemotePageDescriptionManifest(pageDescriptionManifest.value, next.authorName ?? '未署名', scopeId)
+    if (!savedManifest) throw new Error(`页面描述 ${scopeId} 已写入，但 manifest 回读失败`)
+    const canonical = normalizePageDescriptions([{ ...saved.value, screenId: next.screenId, stateId: next.stateId }])[0]
+    if (!canonical) throw new Error(`页面描述 ${scopeId} 回读内容无效`)
+    const syncedAt = new Date().toISOString()
+    writeScopedCollaborationCache('pageDescriptions', scopeId, canonical, saved.sha, syncedAt, 'synced')
+    setPageDescriptionSourceValue('gitee', scopeId, canonical)
+    setPageDescriptionSourceValue('local-cache', scopeId, canonical)
+    pageDescriptions.value = [...pageDescriptions.value.filter((item) => annotationScopeId(item.screenId, item.stateId) !== scopeId), canonical]
+    pageDescriptionManifest.value = savedManifest.value
+    setCollaborationSource('pageDescriptions', 'gitee', 'success', '', syncedAt)
+    return true
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '页面描述保存失败'
+    if (error instanceof CollaborationConflictError) markCollaborationConflict('pageDescriptions', message)
+    else setCollaborationSource('pageDescriptions', collaborationSources.value.pageDescriptions.source, 'error', message)
+    return false
+  }
+}
+
+async function saveCurrentPageDescription() {
+  const next = buildCurrentPageDescription()
+  if (annotationRemoteReady.value) return savePageDescriptionToGitee(next)
+  return saveCurrentPageDescriptionToCache()
+}
+
+async function pushPageDescriptionSourceToGitee(source: DataSource) {
+  if (source === 'gitee') return false
+  if (!collaborationContext.remoteWritable) {
+    setCollaborationSource('pageDescriptions', source, 'error', collaborationContext.unavailableReason || 'Gitee 当前不可写')
+    return false
+  }
+  const scopeId = currentAnnotationScopeId()
+  const sourceValue = source === 'local-cache' ? buildCurrentPageDescription() : pageDescriptionSourceValues.value[source][scopeId]
+  if (!sourceValue) {
+    setCollaborationSource('pageDescriptions', source, 'error', `${source === 'local-cache' ? '本地缓存' : 'JSON'} 当前 Scope 不存在页面描述`)
+    return false
+  }
+  if (source === 'local-cache') saveCurrentPageDescriptionToCache()
+  const saved = await savePageDescriptionToGitee(sourceValue)
+  if (saved) {
+    pageDescriptionSelectedSource.value = 'gitee'
+    syncPageDescriptionEditor()
+  }
+  return saved
 }
 
 async function syncPageDescriptionsFromJson(options: PageDescriptionJsonSyncOptions = {}): Promise<PageDescriptionJsonSyncResult> {
   if (!collaborationContext.remoteWritable) throw new Error(collaborationContext.unavailableReason || 'Gitee 当前不可写')
   const seed = normalizePageDescriptions(await loadLocalJson<unknown>('page-descriptions.json', []))
   if (!seed.length) throw new Error('page-descriptions.json 未包含有效页面描述')
+  pageDescriptionSourceValues.value = { ...pageDescriptionSourceValues.value, 'local-seed': pageDescriptionsByScope(seed) }
   const requestedScopeIds = [...new Set(options.scopeIds?.map((scopeId) => scopeId.trim()).filter(Boolean) ?? [])]
   const seedByScope = new Map(seed.map((description) => [annotationScopeId(description.screenId, description.stateId), description]))
   const missingScopeIds = requestedScopeIds.filter((scopeId) => !seedByScope.has(scopeId))
@@ -1456,6 +1545,8 @@ async function syncPageDescriptionsFromJson(options: PageDescriptionJsonSyncOpti
       if (current && currentCanonical && jsonValuesEqual(currentCanonical, description)) {
         const syncedAt = new Date().toISOString()
         writeScopedCollaborationCache('pageDescriptions', scopeId, currentCanonical, current.sha, syncedAt, 'synced')
+        setPageDescriptionSourceValue('gitee', scopeId, currentCanonical)
+        setPageDescriptionSourceValue('local-cache', scopeId, currentCanonical)
         pageDescriptions.value = [...pageDescriptions.value.filter((item) => annotationScopeId(item.screenId, item.stateId) !== scopeId), currentCanonical]
         skippedScopes.push(scopeId)
         continue
@@ -1467,6 +1558,8 @@ async function syncPageDescriptionsFromJson(options: PageDescriptionJsonSyncOpti
       if (!canonical) throw new Error(`页面描述 ${scopeId} 回读内容无效`)
       const syncedAt = new Date().toISOString()
       writeScopedCollaborationCache('pageDescriptions', scopeId, canonical, saved.sha, syncedAt, 'synced')
+      setPageDescriptionSourceValue('gitee', scopeId, canonical)
+      setPageDescriptionSourceValue('local-cache', scopeId, canonical)
       pageDescriptions.value = [...pageDescriptions.value.filter((item) => annotationScopeId(item.screenId, item.stateId) !== scopeId), canonical]
       updatePageDescriptionManifest(canonical.screenId, canonical.stateId, 1, canonical.highlighted, canonical.highlightColor)
       if (!pageDescriptionManifest.value) throw new Error('页面描述索引未初始化')
@@ -1738,6 +1831,8 @@ export function usePrototypeContext() {
     annotationEditor,
     pageDescriptions,
     pageDescriptionManifest,
+    pageDescriptionSelectedSource,
+    pageDescriptionSourceValues,
     pageDescriptionEditor,
     activeThemeColors,
     activeDesignColors,
@@ -1807,6 +1902,9 @@ export function usePrototypeContext() {
     saveAnnotationPollingInterval,
     exportAnnotations,
     saveCurrentPageDescription,
+    saveCurrentPageDescriptionToCache,
+    pushPageDescriptionSourceToGitee,
+    selectPageDescriptionSource,
     syncPageDescriptionsFromJson,
     exportPageDescriptions,
     annotationPointStyle,

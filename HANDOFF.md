@@ -31,7 +31,8 @@
 - 主题面板已从配色切换升级为主题切换：以 `DESIGN.md` 为事实来源、`DESIGN-TOKENS.md` 为实现索引，运行时新增 `--ds-*` 颜色、字体、圆角、间距和阴影变量；旧 `--color-*` 与旧版主题 JSON 继续兼容；`#/prototype-core-theme` 提供公开主题准则页，入口在主题切换弹层。
 - Gitee 协作路径、scope、缓存和写入动作均由内核通用契约约束；消费者标识和资源只能通过产品定义与 `runtimeConfig` 注入，不进入内核文档或源码。
 - 协作缓存使用 schema v3：页面描述与注释按 scope 保存独立 revision，流程与 Bug 按整文件保存，并区分 `synced/pending/stale/error`；旧 v2 缓存会保守迁移为 `stale`。
-- 页面描述 JSON 由 AI 修改后，可通过浏览器命令或 `prototype-core-sync-page-descriptions` 终端命令执行差异同步；支持指定 Scope、逐项成功/跳过/失败结果、Gitee 错误正文与 Scope/manifest 精确回读。JSON 不作为启用远端协作后的第二真值。
+- 交互模式与页面描述编辑弹窗可按当前 scope 切换查看 Gitee、本地缓存和静态 JSON；JSON 保持只读，本地缓存可独立编辑，缓存或 JSON 可在确认目标路径后推送 Gitee 并精确回读 scope 与 manifest。待推送缓存不会被轮询覆盖；JSON 不作为启用远端协作后的第二真值。
+- 页面描述 JSON 由 AI 修改后，也可通过浏览器命令或 `prototype-core-sync-page-descriptions` 终端命令执行批量差异同步；支持指定 Scope、逐项成功/跳过/失败结果和 Gitee 错误正文。
 - `AI-PROTOTYPE-GUIDE.md` 是消费者原型实施操作手册，以触发词路由接入、页面、状态、跳转、流程、协作配置、升级和验收，并为每项操作定义固定动作与完成判定。
 - 内核提供公开的 `#/prototype-core-help` 路由和顶部紧凑文档图标，构建时内嵌操作手册 Markdown，供人或 AI 直接读取和复制，不依赖消费者认证或静态文件部署。
 
@@ -60,7 +61,7 @@
 - **背景**: 整表缓存会遮挡新版 JSON，且按 scope 远端文件与整表 revision 粒度不一致。
 - **决策**: 缓存升级为 schema v3；页面描述与注释按 scope 缓存，流程与 Bug 按整文件缓存，所有远端写入以精确回读结果确认。
 - **原因**: 缓存只能承担快速展示和本地暂存，不能形成独立于 Gitee 的第二真值。
-- **影响**: AI 修改页面描述 JSON 后必须显式同步 Gitee；远端失败保留 stale 缓存并允许重试。
+- **影响**: AI 修改页面描述 JSON 后必须显式同步 Gitee；人工可对比三类来源并将当前 scope 的缓存或 JSON 显式推送，待推送缓存受保护，远端失败时保留本地内容并允许重试。
 - **日期**: 2026-07-03。
 
 ### DR-20260707-01: 主题切换引入设计系统语义 token
@@ -73,7 +74,7 @@
 
 <!-- fresh-meta
 last-updated: 2026-07-13
-trigger-reason: 完成页面描述差异同步、逐项错误报告与终端同步入口
+trigger-reason: 完成页面描述三来源对比、缓存保护与按 scope 推送入口
 updated-by: handoff-maintainer
-next-review: 当页面描述同步接入首个真实消费者或协作协议再次变化时
+next-review: 当三来源对比接入首个真实消费者或协作协议再次变化时
 -->

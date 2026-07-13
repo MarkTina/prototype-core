@@ -166,6 +166,30 @@
     appearance: none;
   }
 
+  .page-description-summary-shell {
+    @apply mx-auto w-full max-w-3xl text-left;
+  }
+
+  .page-description-source-switcher {
+    @apply flex w-fit max-w-full gap-1 rounded-[var(--ds-rounded-md)] border border-line bg-soft p-1;
+  }
+
+  .page-description-summary-shell > .page-description-source-switcher {
+    @apply mb-4;
+  }
+
+  .page-description-source-switcher button {
+    @apply flex h-9 items-center gap-1.5 rounded-[var(--ds-rounded-sm)] px-3 text-xs font-semibold text-muted transition active:scale-95;
+  }
+
+  .page-description-source-switcher button svg {
+    @apply h-4 w-4 shrink-0;
+  }
+
+  .page-description-source-switcher button.active {
+    @apply bg-panel text-ink ring-1 ring-line;
+  }
+
   .page-description-summary p {
     @apply text-[16px] font-normal leading-6 text-ink/85;
     display: -webkit-box;
@@ -1448,6 +1472,26 @@
     scrollbar-color: rgb(var(--color-line)) transparent;
   }
 
+  .page-description-editor-source-row {
+    @apply flex flex-wrap items-center justify-between gap-3 rounded-[var(--ds-rounded-lg)] border border-line bg-soft/55 p-3;
+  }
+
+  .page-description-editor-source-row > small {
+    @apply text-xs font-semibold text-muted;
+  }
+
+  .page-description-editor-fields {
+    @apply min-w-0 space-y-3 border-0 p-0;
+  }
+
+  .page-description-editor-fields:disabled {
+    @apply opacity-75;
+  }
+
+  .page-description-editor-fields:disabled textarea {
+    @apply cursor-default;
+  }
+
   .page-description-view {
     @apply mt-4 space-y-3 pb-2;
   }
@@ -1532,12 +1576,28 @@
     @apply flex h-11 w-full items-center justify-center rounded-full bg-ocean px-4 text-sm font-semibold text-white transition active:scale-95 disabled:cursor-not-allowed disabled:bg-line disabled:text-muted;
   }
 
+  .page-description-form .page-description-source-switcher button {
+    @apply h-9 w-auto rounded-[var(--ds-rounded-sm)] bg-transparent px-3 text-xs text-muted;
+  }
+
+  .page-description-form .page-description-source-switcher button.active {
+    @apply bg-panel text-ink;
+  }
+
   .page-description-form-actions {
     @apply grid grid-cols-2 gap-2;
   }
 
+  .page-description-form-actions.has-three-actions {
+    @apply grid-cols-3;
+  }
+
   .page-description-form-actions button:first-child {
     @apply border border-line bg-soft text-muted disabled:bg-soft;
+  }
+
+  .page-description-action-notice {
+    @apply block rounded-[var(--ds-rounded-sm)] border border-line bg-soft px-3 py-2 text-xs font-semibold leading-5 text-muted;
   }
 
   .page-description-dialog-backdrop {

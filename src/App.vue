@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { BookOpen, Keyboard } from '@lucide/vue'
+import { BookOpen, Cloud, Database, FileJson, Keyboard } from '@lucide/vue'
 import ScreenRenderer from './screens/ScreenRenderer.vue'
 import TabBar from './components/phone/TabBar.vue'
 import PrototypeStateSwitcher from './components/phone/PrototypeStateSwitcher.vue'
@@ -10,7 +10,7 @@ import PrototypeCoreHelpPage from './help/PrototypeCoreHelpPage.vue'
 import PrototypeCoreThemeGuidePage from './help/PrototypeCoreThemeGuidePage.vue'
 import { usePrototypeContext, useFlowEditorContext } from './prototype/usePrototype'
 import { useProductBugs } from './tools/bugs/useProductBugs'
-import type { DisplayScreen, PrototypeAnnotation } from './types/prototype'
+import type { DataSource, DisplayScreen, PrototypeAnnotation } from './types/prototype'
 import { getPrototypeRuntime } from './core/productAdapter'
 
 const {
@@ -56,6 +56,8 @@ const {
   annotationEditor,
   pageDescriptions,
   pageDescriptionManifest,
+  pageDescriptionSelectedSource,
+  pageDescriptionSourceValues,
   pageDescriptionEditor,
   activeThemeColors,
   activeDesignColors,
@@ -121,6 +123,9 @@ const {
   saveAnnotationPollingInterval,
   exportAnnotations,
   saveCurrentPageDescription,
+  saveCurrentPageDescriptionToCache,
+  pushPageDescriptionSourceToGitee,
+  selectPageDescriptionSource,
   exportPageDescriptions,
   annotationPointStyle,
   selectFlow,
@@ -186,6 +191,7 @@ const pageDescriptionSummaryVisible = ref(false)
 const pageDescriptionCopyNotice = ref('')
 const selectedPageDescriptionSectionIds = ref<string[]>([...defaultPageDescriptionSectionIds])
 const pageDescriptionEditing = ref(false)
+const pageDescriptionActionNotice = ref('')
 const presetHighlightColors = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6']
 const presetAnnotationColors = presetHighlightColors
 const customHighlightColorInput = ref('')
@@ -571,6 +577,7 @@ function resetPageDescriptionEditorFromCurrent() {
 
 function startPageDescriptionEdit() {
   resetPageDescriptionEditorFromCurrent()
+  pageDescriptionActionNotice.value = ''
   pageDescriptionEditing.value = true
 }
 
@@ -582,6 +589,24 @@ function cancelPageDescriptionEdit() {
 async function handlePageDescriptionSave() {
   const saved = await saveCurrentPageDescription()
   if (saved) pageDescriptionEditing.value = false
+}
+
+function handlePageDescriptionCacheSave() {
+  const saved = saveCurrentPageDescriptionToCache()
+  if (saved) pageDescriptionEditing.value = false
+}
+
+async function handlePageDescriptionSourcePush() {
+  if (pageDescriptionSelectedSource.value === 'gitee') return
+  const scopeId = prototypeScopeId(currentScreen.value, activePrototypeStateId.value)
+  const branchKey = collaborationContext.branchKey || '未知分支'
+  const path = `projects/${collaborationContext.projectId}/branches/${branchKey}/page-descriptions/${scopeId}.json`
+  const sourceLabel = pageDescriptionSelectedSource.value === 'local-cache' ? '本地缓存' : 'JSON'
+  const confirmed = window.confirm(`将${sourceLabel}中的当前页面描述覆盖推送到 Gitee？\n\nScope：${scopeId}\n目标：${path}\n\n推送后还会合并更新 manifest.json。`)
+  if (!confirmed) return
+  pageDescriptionActionNotice.value = '正在推送并回读验证...'
+  const saved = await pushPageDescriptionSourceToGitee(pageDescriptionSelectedSource.value)
+  pageDescriptionActionNotice.value = saved ? '已推送 Gitee，并完成 Scope 与 manifest 回读。' : collaborationSources.value.pageDescriptions.message || '推送失败。'
 }
 
 function handleFlowSave(flows: Parameters<typeof saveFlowsToSession>[0], done: (success: boolean) => void) {
@@ -754,6 +779,20 @@ const currentPageDescriptionUpdatedLabel = computed(() => {
   if (!currentPageDescription.value?.authorName && !currentPageDescription.value?.updatedAt) return ''
   const updatedAt = formatAnnotationTime(currentPageDescription.value.updatedAt)
   return `${currentPageDescription.value.authorName || '未署名'}${updatedAt ? ` · ${updatedAt}` : ''}`
+})
+const currentPageDescriptionScopeId = computed(() => prototypeScopeId(currentScreen.value, activePrototypeStateId.value))
+const pageDescriptionSourceOptions: Array<{ source: DataSource; label: string; icon: typeof Cloud }> = [
+  { source: 'gitee', label: 'Gitee', icon: Cloud },
+  { source: 'local-cache', label: '本地缓存', icon: Database },
+  { source: 'local-seed', label: 'JSON', icon: FileJson },
+]
+const selectedPageDescriptionSourceAvailable = computed(() => Boolean(
+  pageDescriptionSourceValues.value[pageDescriptionSelectedSource.value][currentPageDescriptionScopeId.value],
+))
+const selectedPageDescriptionSourceStatus = computed(() => {
+  if (selectedPageDescriptionSourceAvailable.value) return '当前 Scope 已加载'
+  if (pageDescriptionSelectedSource.value === 'gitee' && !annotationRemoteReady.value) return collaborationContext.unavailableReason || 'Gitee 未启用'
+  return '当前 Scope 无数据'
 })
 const pageDescriptionSummary = computed(() => ({
   purpose: currentPageDescription.value?.purpose.trim() || '当前页面暂无页面目的描述。',
@@ -1807,15 +1846,29 @@ onBeforeUnmount(() => {
       :class="effectiveMode === 'overview' ? 'max-w-none' : effectiveMode === 'interactive' && currentScreenPlatform === 'pc' ? 'max-w-[1504px]' : 'max-w-7xl'"
     >
       <section v-if="!isMobilePureInteractive" class="apple-hero-copy">
-        <button
-          v-if="effectiveMode === 'interactive'"
-          class="page-description-summary"
-          type="button"
-          @click="pageDescriptionSummaryVisible = true; pageDescriptionCopyNotice = ''"
-        >
-          <p><b>页面结构：</b>{{ pageDescriptionSummary.structure }}</p>
-          <p><b>核心功能：</b>{{ pageDescriptionSummary.features }}</p>
-        </button>
+        <div v-if="effectiveMode === 'interactive'" class="page-description-summary-shell">
+          <div class="page-description-source-switcher" aria-label="切换页面描述数据源">
+            <button
+              v-for="option in pageDescriptionSourceOptions"
+              :key="option.source"
+              type="button"
+              :class="{ active: pageDescriptionSelectedSource === option.source }"
+              :aria-pressed="pageDescriptionSelectedSource === option.source"
+              @click="selectPageDescriptionSource(option.source)"
+            >
+              <component :is="option.icon" aria-hidden="true" />
+              <span>{{ option.label }}</span>
+            </button>
+          </div>
+          <button
+            class="page-description-summary"
+            type="button"
+            @click="pageDescriptionSummaryVisible = true; pageDescriptionCopyNotice = ''"
+          >
+            <p><b>页面结构：</b>{{ pageDescriptionSummary.structure }}</p>
+            <p><b>核心功能：</b>{{ pageDescriptionSummary.features }}</p>
+          </button>
+        </div>
         <p v-else>{{ t('heroCopy') }}</p>
       </section>
 
@@ -2257,69 +2310,97 @@ onBeforeUnmount(() => {
         <form class="page-description-form" @submit.prevent="handlePageDescriptionSave">
           <p v-if="!currentPageDescription" class="annotation-empty">{{ t('pageDescriptionEmpty') }}</p>
           <small v-else-if="currentPageDescriptionUpdatedLabel" class="page-description-meta">{{ currentPageDescriptionUpdatedLabel }}</small>
-          <label class="page-description-highlight-field">
-            <input v-model="pageDescriptionEditor.highlighted" type="checkbox" />
-            <span>重点标注当前状态页</span>
-          </label>
-          <section v-if="pageDescriptionEditor.highlighted" class="page-description-highlight-colors">
-            <span>标记颜色</span>
-            <div class="page-description-highlight-swatches">
+          <div class="page-description-editor-source-row">
+            <div class="page-description-source-switcher" aria-label="切换编辑数据源">
               <button
-                v-for="color in [...presetHighlightColors, ...customHighlightColors]"
-                :key="color"
+                v-for="option in pageDescriptionSourceOptions"
+                :key="option.source"
                 type="button"
-                :class="{ active: pageDescriptionEditor.highlightColor === color }"
-                :style="{ backgroundColor: color }"
-                :aria-label="`选择颜色 ${color}`"
-                :title="color"
-                @click="selectHighlightColor(color)"
-              />
+                :class="{ active: pageDescriptionSelectedSource === option.source }"
+                :aria-pressed="pageDescriptionSelectedSource === option.source"
+                @click="selectPageDescriptionSource(option.source); pageDescriptionActionNotice = ''"
+              >
+                <component :is="option.icon" aria-hidden="true" />
+                <span>{{ option.label }}</span>
+              </button>
             </div>
-            <div class="page-description-custom-color">
-              <input v-model="customHighlightColorInput" type="text" maxlength="7" placeholder="#12b981" @keydown.enter.prevent="addCustomHighlightColor" />
-              <button type="button" @click="addCustomHighlightColor">新增</button>
-            </div>
-            <small v-if="customHighlightColorNotice">{{ customHighlightColorNotice }}</small>
-          </section>
-          <label>
-            <span>{{ t('pageDescriptionPurpose') }}</span>
-            <textarea v-model="pageDescriptionEditor.purpose" :placeholder="t('pageDescriptionPurposePlaceholder')" />
-          </label>
-          <label>
-            <span>{{ t('pageDescriptionStructure') }}</span>
-            <textarea v-model="pageDescriptionEditor.structure" :placeholder="t('pageDescriptionStructurePlaceholder')" />
-          </label>
-          <label>
-            <span>{{ t('pageDescriptionFeatures') }}</span>
-            <textarea v-model="pageDescriptionEditor.features" :placeholder="t('pageDescriptionFeaturesPlaceholder')" />
-          </label>
-          <label>
-            <span>{{ t('pageDescriptionFlowPosition') }}</span>
-            <textarea v-model="pageDescriptionEditor.flowPosition" :placeholder="t('pageDescriptionFlowPlaceholder')" />
-          </label>
-          <label>
-            <span>交互规则</span>
-            <textarea v-model="pageDescriptionEditor.interactionRules" placeholder="说明用户操作后的页面跳转、状态变化、按钮行为和不可直接跳过的流程。" />
-          </label>
-          <label>
-            <span>状态判断依据</span>
-            <textarea v-model="pageDescriptionEditor.stateCriteria" placeholder="用中文业务语义说明页面展示依赖哪些状态，不写接口字段名。" />
-          </label>
-          <label>
-            <span>异常与边界</span>
-            <textarea v-model="pageDescriptionEditor.edgeCases" placeholder="说明空态、失败态、权限、断连、重复点击、数据不足等边界。" />
-          </label>
-          <label>
-            <span>开发验收</span>
-            <textarea v-model="pageDescriptionEditor.acceptanceCriteria" placeholder="说明开发完成后如何判断页面、状态、流程和指标语义实现正确。" />
-          </label>
-          <label>
-            <span>补充说明</span>
-            <textarea v-model="pageDescriptionEditor.developmentNotes" :placeholder="t('pageDescriptionDevelopmentPlaceholder')" />
-          </label>
-          <div class="page-description-form-actions">
+            <small>{{ selectedPageDescriptionSourceStatus }}</small>
+          </div>
+          <fieldset class="page-description-editor-fields" :disabled="pageDescriptionSelectedSource === 'local-seed'">
+            <label class="page-description-highlight-field">
+              <input v-model="pageDescriptionEditor.highlighted" type="checkbox" />
+              <span>重点标注当前状态页</span>
+            </label>
+            <section v-if="pageDescriptionEditor.highlighted" class="page-description-highlight-colors">
+              <span>标记颜色</span>
+              <div class="page-description-highlight-swatches">
+                <button
+                  v-for="color in [...presetHighlightColors, ...customHighlightColors]"
+                  :key="color"
+                  type="button"
+                  :class="{ active: pageDescriptionEditor.highlightColor === color }"
+                  :style="{ backgroundColor: color }"
+                  :aria-label="`选择颜色 ${color}`"
+                  :title="color"
+                  @click="selectHighlightColor(color)"
+                />
+              </div>
+              <div class="page-description-custom-color">
+                <input v-model="customHighlightColorInput" type="text" maxlength="7" placeholder="#12b981" @keydown.enter.prevent="addCustomHighlightColor" />
+                <button type="button" @click="addCustomHighlightColor">新增</button>
+              </div>
+              <small v-if="customHighlightColorNotice">{{ customHighlightColorNotice }}</small>
+            </section>
+            <label>
+              <span>{{ t('pageDescriptionPurpose') }}</span>
+              <textarea v-model="pageDescriptionEditor.purpose" :placeholder="t('pageDescriptionPurposePlaceholder')" />
+            </label>
+            <label>
+              <span>{{ t('pageDescriptionStructure') }}</span>
+              <textarea v-model="pageDescriptionEditor.structure" :placeholder="t('pageDescriptionStructurePlaceholder')" />
+            </label>
+            <label>
+              <span>{{ t('pageDescriptionFeatures') }}</span>
+              <textarea v-model="pageDescriptionEditor.features" :placeholder="t('pageDescriptionFeaturesPlaceholder')" />
+            </label>
+            <label>
+              <span>{{ t('pageDescriptionFlowPosition') }}</span>
+              <textarea v-model="pageDescriptionEditor.flowPosition" :placeholder="t('pageDescriptionFlowPlaceholder')" />
+            </label>
+            <label>
+              <span>交互规则</span>
+              <textarea v-model="pageDescriptionEditor.interactionRules" placeholder="说明用户操作后的页面跳转、状态变化、按钮行为和不可直接跳过的流程。" />
+            </label>
+            <label>
+              <span>状态判断依据</span>
+              <textarea v-model="pageDescriptionEditor.stateCriteria" placeholder="用中文业务语义说明页面展示依赖哪些状态，不写接口字段名。" />
+            </label>
+            <label>
+              <span>异常与边界</span>
+              <textarea v-model="pageDescriptionEditor.edgeCases" placeholder="说明空态、失败态、权限、断连、重复点击、数据不足等边界。" />
+            </label>
+            <label>
+              <span>开发验收</span>
+              <textarea v-model="pageDescriptionEditor.acceptanceCriteria" placeholder="说明开发完成后如何判断页面、状态、流程和指标语义实现正确。" />
+            </label>
+            <label>
+              <span>补充说明</span>
+              <textarea v-model="pageDescriptionEditor.developmentNotes" :placeholder="t('pageDescriptionDevelopmentPlaceholder')" />
+            </label>
+          </fieldset>
+          <small v-if="pageDescriptionActionNotice" class="page-description-action-notice">{{ pageDescriptionActionNotice }}</small>
+          <div class="page-description-form-actions" :class="{ 'has-three-actions': pageDescriptionSelectedSource === 'local-cache' }">
             <button type="button" @click="cancelPageDescriptionEdit">{{ t('annotationCancel') }}</button>
-            <button type="submit" :disabled="annotationSyncStatus === 'syncing'">{{ t('pageDescriptionSave') }}</button>
+            <button v-if="pageDescriptionSelectedSource === 'gitee'" type="submit" :disabled="annotationSyncStatus === 'syncing' || !collaborationContext.remoteWritable">保存到 Gitee</button>
+            <button v-if="pageDescriptionSelectedSource === 'local-cache'" type="button" @click="handlePageDescriptionCacheSave">保存缓存</button>
+            <button
+              v-if="pageDescriptionSelectedSource !== 'gitee'"
+              type="button"
+              :disabled="annotationSyncStatus === 'syncing' || !selectedPageDescriptionSourceAvailable || !collaborationContext.remoteWritable"
+              @click="handlePageDescriptionSourcePush"
+            >
+              推送到 Gitee
+            </button>
           </div>
         </form>
       </section>
