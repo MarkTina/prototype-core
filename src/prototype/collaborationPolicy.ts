@@ -55,8 +55,12 @@ function stableJson(value: unknown): string {
   return JSON.stringify(value)
 }
 
+export function jsonValuesEqual(left: unknown, right: unknown) {
+  return stableJson(left) === stableJson(right)
+}
+
 export function remoteInitializationDecision(current: unknown, next: unknown): 'unchanged' | 'protected' {
-  return stableJson(current) === stableJson(next) ? 'unchanged' : 'protected'
+  return jsonValuesEqual(current, next) ? 'unchanged' : 'protected'
 }
 
 export function selectGiteeFileResponse(response: unknown, requestedPath: string) {

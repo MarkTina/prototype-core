@@ -320,10 +320,12 @@ projects/<projectId>/branches/<branchKey>/
 AI 直接补充消费者 `page-descriptions.json` 后，不得只等待缓存自行失效。在已挂载且启用 Gitee 协作的消费者页面中执行：
 
 ```js
-await window.__PROTOTYPE_CORE__.syncPageDescriptionsFromJson()
+await window.__PROTOTYPE_CORE__.syncPageDescriptionsFromJson({ scopeIds: ['<scopeId>'] })
 ```
 
-该指令会重新读取 JSON，逐 scope 写入 Gitee、合并 manifest、精确回读并刷新当前上下文缓存。JSON 中未出现的远端 scope 不会被删除；任一 scope 或 manifest 失败时指令会报错，不得宣称同步完成。
+不传 `scopeIds` 时会检查 JSON 中的全部 scope，但只写入远端缺失或内容发生变化的项。每项写入前读取最新 SHA，Scope 写入并回读成功后才合并 manifest。返回值分别列出成功、跳过和失败 Scope；单项失败不会中止后续项，存在 `failedScopes` 时不得宣称同步完成。
+
+需要在终端执行时，使用包提供的 `prototype-core-sync-page-descriptions` 命令并显式传入 owner、repo、projectId、codeBranch 和目标 scope。Token 只允许通过 `AGENT_GITEE_ACCESS_TOKEN` 或 `GITEE_TOKEN` 提供；命令会精确回读 Scope 与 manifest，失败时以非零状态退出。
 
 ### 7.4 流程
 

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { collaborationBranchKey, collaborationCacheKey, createSerialQueue, remoteInitializationDecision, selectGiteeFileResponse, selectLocalFallback, shouldDeferRemoteRefresh, upsertScopedCache, withoutScopedCache } from '../src/prototype/collaborationPolicy.ts'
+import { collaborationBranchKey, collaborationCacheKey, createSerialQueue, jsonValuesEqual, remoteInitializationDecision, selectGiteeFileResponse, selectLocalFallback, shouldDeferRemoteRefresh, upsertScopedCache, withoutScopedCache } from '../src/prototype/collaborationPolicy.ts'
 
 test('主分支使用稳定目录，功能分支不会互相碰撞', () => {
   assert.equal(collaborationBranchKey('main'), 'main')
@@ -58,6 +58,12 @@ test('同一资源的并发任务按顺序执行', async () => {
 test('重复初始化不会覆盖或重复创建远端文件', () => {
   assert.equal(remoteInitializationDecision({ b: 2, a: 1 }, { a: 1, b: 2 }), 'unchanged')
   assert.equal(remoteInitializationDecision({ a: 1 }, { a: 2 }), 'protected')
+})
+
+test('JSON 内容比较忽略对象键顺序，但保留数组顺序和字段差异', () => {
+  assert.equal(jsonValuesEqual({ b: 2, a: { d: 4, c: 3 } }, { a: { c: 3, d: 4 }, b: 2 }), true)
+  assert.equal(jsonValuesEqual({ items: ['a', 'b'] }, { items: ['b', 'a'] }), false)
+  assert.equal(jsonValuesEqual({ screenId: 'home' }, { screenId: 'home', title: '' }), false)
 })
 
 test('按 Gitee 官方 Content 数组结构解析文件与缺失状态', () => {

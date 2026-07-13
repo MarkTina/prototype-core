@@ -31,7 +31,7 @@
 - 主题面板已从配色切换升级为主题切换：以 `DESIGN.md` 为事实来源、`DESIGN-TOKENS.md` 为实现索引，运行时新增 `--ds-*` 颜色、字体、圆角、间距和阴影变量；旧 `--color-*` 与旧版主题 JSON 继续兼容；`#/prototype-core-theme` 提供公开主题准则页，入口在主题切换弹层。
 - Gitee 协作路径、scope、缓存和写入动作均由内核通用契约约束；消费者标识和资源只能通过产品定义与 `runtimeConfig` 注入，不进入内核文档或源码。
 - 协作缓存使用 schema v3：页面描述与注释按 scope 保存独立 revision，流程与 Bug 按整文件保存，并区分 `synced/pending/stale/error`；旧 v2 缓存会保守迁移为 `stale`。
-- 页面描述 JSON 由 AI 修改后，可通过 `window.__PROTOTYPE_CORE__.syncPageDescriptionsFromJson()` 执行“写 Gitee → 合并 manifest → 精确回读 → 更新缓存”；JSON 不作为启用远端协作后的第二真值。
+- 页面描述 JSON 由 AI 修改后，可通过浏览器命令或 `prototype-core-sync-page-descriptions` 终端命令执行差异同步；支持指定 Scope、逐项成功/跳过/失败结果、Gitee 错误正文与 Scope/manifest 精确回读。JSON 不作为启用远端协作后的第二真值。
 - `AI-PROTOTYPE-GUIDE.md` 是消费者原型实施操作手册，以触发词路由接入、页面、状态、跳转、流程、协作配置、升级和验收，并为每项操作定义固定动作与完成判定。
 - 内核提供公开的 `#/prototype-core-help` 路由和顶部紧凑文档图标，构建时内嵌操作手册 Markdown，供人或 AI 直接读取和复制，不依赖消费者认证或静态文件部署。
 
@@ -72,8 +72,8 @@
 - **日期**: 2026-07-07。
 
 <!-- fresh-meta
-last-updated: 2026-07-07
-trigger-reason: 完成主题切换与设计系统 token 兼容层
+last-updated: 2026-07-13
+trigger-reason: 完成页面描述差异同步、逐项错误报告与终端同步入口
 updated-by: handoff-maintainer
-next-review: 当主题 token 接入首个真实消费者页面、主题准则路由内容变化或公共主题 API 再次变化时
+next-review: 当页面描述同步接入首个真实消费者或协作协议再次变化时
 -->

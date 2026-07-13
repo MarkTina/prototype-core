@@ -29,7 +29,18 @@ void mountPrototypeApp({
 
 涉及 UI 或主题实现时，可访问 `#/prototype-core-theme` 阅读并复制主题实现准则；该页面内容来自构建时内嵌的 `DESIGN-TOKENS.md`。
 
-AI 修改消费者 `page-descriptions.json` 后，可在已启用 Gitee 协作的应用页面上下文执行 `await window.__PROTOTYPE_CORE__.syncPageDescriptionsFromJson()`。该指令以 Gitee 为唯一真值，完成逐 scope 写入、manifest 合并、远端回读和缓存刷新；不会删除 JSON 中未列出的远端 scope。
+AI 修改消费者 `page-descriptions.json` 后，可在已启用 Gitee 协作的应用页面上下文执行 `await window.__PROTOTYPE_CORE__.syncPageDescriptionsFromJson()`。该指令只写入远端缺失或内容变化的 scope，完成 manifest 合并、远端回读和缓存刷新；不会删除 JSON 中未列出的远端 scope。指定单个 scope 时传入 `await window.__PROTOTYPE_CORE__.syncPageDescriptionsFromJson({ scopeIds: ['home'] })`。返回值分别列出 `syncedScopes`、`skippedScopes` 和 `failedScopes`，单个 scope 失败不会中止其余目标。
+
+也可从消费者项目终端执行同一类差异同步和精确回读。Token 只从 `AGENT_GITEE_ACCESS_TOKEN` 或 `GITEE_TOKEN` 读取：
+
+```bash
+pnpm exec prototype-core-sync-page-descriptions \
+  --owner <owner> --repo <repo> \
+  --project-id <projectId> --code-branch <codeBranch> \
+  --scope <scopeId>
+```
+
+可用 `--file` 指定 JSON（默认 `public/page-descriptions.json`），用 `--remote-branch` 指定 Gitee 分支（默认 `master`），重复 `--scope` 可同步多个 scope。存在失败项时命令输出完整成功、跳过和失败列表，并以非零状态退出。
 
 数据源面板会根据 `runtimeConfig` 检查 Gitee、OSS、原型访问和 Bug 删除密码是否齐全。部署变量不能在浏览器中直接读取，消费者只能传入是否存在，禁止传入真实值：
 

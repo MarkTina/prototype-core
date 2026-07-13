@@ -9,9 +9,13 @@
   "types": "./dist/index.d.ts",
   "files": [
     "dist",
+    "scripts/sync-page-descriptions.mjs",
     "README.md",
     "LICENSE"
   ],
+  "bin": {
+    "prototype-core-sync-page-descriptions": "scripts/sync-page-descriptions.mjs"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",

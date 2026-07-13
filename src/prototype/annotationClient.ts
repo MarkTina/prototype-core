@@ -115,7 +115,10 @@ async function writeGiteeFile(path: string, value: unknown, sha: string | null, 
     body,
   })
   if (response.status === 409 || response.status === 422) throw new CollaborationConflictError()
-  if (!response.ok) throw new Error(`提交 Gitee 文件失败：${response.status}`)
+  if (!response.ok) {
+    const responseBody = (await response.text()).trim().slice(0, 2000)
+    throw new Error(`提交 Gitee 文件失败：${response.status}${responseBody ? ` / ${responseBody}` : ''}`)
+  }
 }
 
 function commitMessage(scopeId: string, authorName: string, operation: string, kind: CollaborationDataKind) {

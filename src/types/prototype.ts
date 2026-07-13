@@ -35,11 +35,17 @@ export interface ScopedCollaborationCacheSnapshot<T> {
 
 export interface PageDescriptionJsonSyncResult {
   syncedScopes: string[]
+  skippedScopes: string[]
+  failedScopes: Array<{ scopeId: string; error: string }>
   total: number
 }
 
+export interface PageDescriptionJsonSyncOptions {
+  scopeIds?: string[]
+}
+
 export interface PrototypeCoreCommands {
-  syncPageDescriptionsFromJson(): Promise<PageDescriptionJsonSyncResult>
+  syncPageDescriptionsFromJson(options?: PageDescriptionJsonSyncOptions): Promise<PageDescriptionJsonSyncResult>
 }
 
 declare global {

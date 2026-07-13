@@ -34,7 +34,7 @@ import {
   writeCollaborationCache,
   writeScopedCollaborationCache,
 } from './collaborationStore'
-import { selectLocalFallback, shouldDeferRemoteRefresh } from './collaborationPolicy'
+import { jsonValuesEqual, selectLocalFallback, shouldDeferRemoteRefresh } from './collaborationPolicy'
 import { getPrototypeProduct, getPrototypeRuntime } from '../core/productAdapter'
 import { setActivePrototypeContext } from '../core/contextBridge'
 import EmptyPrototypeScreen from '../screens/EmptyPrototypeScreen.vue'
@@ -49,6 +49,7 @@ import type {
   Lang,
   MainFlow,
   Mode,
+  PageDescriptionJsonSyncOptions,
   PageDescriptionJsonSyncResult,
   PrototypeAnnotation,
   PrototypePageDescription,
@@ -1424,10 +1425,15 @@ async function saveCurrentPageDescription() {
   return true
 }
 
-async function syncPageDescriptionsFromJson(): Promise<PageDescriptionJsonSyncResult> {
+async function syncPageDescriptionsFromJson(options: PageDescriptionJsonSyncOptions = {}): Promise<PageDescriptionJsonSyncResult> {
   if (!collaborationContext.remoteWritable) throw new Error(collaborationContext.unavailableReason || 'Gitee 当前不可写')
   const seed = normalizePageDescriptions(await loadLocalJson<unknown>('page-descriptions.json', []))
   if (!seed.length) throw new Error('page-descriptions.json 未包含有效页面描述')
+  const requestedScopeIds = [...new Set(options.scopeIds?.map((scopeId) => scopeId.trim()).filter(Boolean) ?? [])]
+  const seedByScope = new Map(seed.map((description) => [annotationScopeId(description.screenId, description.stateId), description]))
+  const missingScopeIds = requestedScopeIds.filter((scopeId) => !seedByScope.has(scopeId))
+  if (missingScopeIds.length) throw new Error(`page-descriptions.json 未找到 Scope：${missingScopeIds.join(', ')}`)
+  const targets = requestedScopeIds.length ? requestedScopeIds.map((scopeId) => seedByScope.get(scopeId)!) : [...seedByScope.values()]
 
   const remoteManifest = await loadRemotePageDescriptionManifest()
   pageDescriptionManifest.value = remoteManifest?.value ?? {
@@ -1437,26 +1443,45 @@ async function syncPageDescriptionsFromJson(): Promise<PageDescriptionJsonSyncRe
     screens: {},
   }
   const syncedScopes: string[] = []
-  for (const description of seed) {
+  const skippedScopes: string[] = []
+  const failedScopes: Array<{ scopeId: string; error: string }> = []
+  for (const description of targets) {
     const scopeId = annotationScopeId(description.screenId, description.stateId)
     const author = description.authorName?.trim() || annotationAuthorName.value.trim() || 'AI'
-    const saved = await saveRemotePageDescription(scopeId, author, description)
-    if (!saved) throw new Error(`页面描述 ${scopeId} 写入后未能回读`)
-    const canonical = normalizePageDescriptions([{ ...saved.value, screenId: description.screenId, stateId: description.stateId }])[0]
-    if (!canonical) throw new Error(`页面描述 ${scopeId} 回读内容无效`)
-    const syncedAt = new Date().toISOString()
-    writeScopedCollaborationCache('pageDescriptions', scopeId, canonical, saved.sha, syncedAt, 'synced')
-    pageDescriptions.value = [...pageDescriptions.value.filter((item) => annotationScopeId(item.screenId, item.stateId) !== scopeId), canonical]
-    updatePageDescriptionManifest(canonical.screenId, canonical.stateId, 1, canonical.highlighted, canonical.highlightColor)
-    if (!pageDescriptionManifest.value) throw new Error('页面描述索引未初始化')
-    const savedManifest = await saveRemotePageDescriptionManifest(pageDescriptionManifest.value, author, scopeId)
-    if (!savedManifest) throw new Error(`页面描述 ${scopeId} 已写入，但 manifest 回读失败`)
-    pageDescriptionManifest.value = savedManifest.value
-    syncedScopes.push(scopeId)
+    try {
+      const current = await loadRemotePageDescription(scopeId)
+      const currentCanonical = current
+        ? normalizePageDescriptions([{ ...current.value, screenId: description.screenId, stateId: description.stateId }])[0]
+        : undefined
+      if (current && currentCanonical && jsonValuesEqual(currentCanonical, description)) {
+        const syncedAt = new Date().toISOString()
+        writeScopedCollaborationCache('pageDescriptions', scopeId, currentCanonical, current.sha, syncedAt, 'synced')
+        pageDescriptions.value = [...pageDescriptions.value.filter((item) => annotationScopeId(item.screenId, item.stateId) !== scopeId), currentCanonical]
+        skippedScopes.push(scopeId)
+        continue
+      }
+
+      const saved = await saveRemotePageDescription(scopeId, author, description)
+      if (!saved) throw new Error(`页面描述 ${scopeId} 写入后未能回读`)
+      const canonical = normalizePageDescriptions([{ ...saved.value, screenId: description.screenId, stateId: description.stateId }])[0]
+      if (!canonical) throw new Error(`页面描述 ${scopeId} 回读内容无效`)
+      const syncedAt = new Date().toISOString()
+      writeScopedCollaborationCache('pageDescriptions', scopeId, canonical, saved.sha, syncedAt, 'synced')
+      pageDescriptions.value = [...pageDescriptions.value.filter((item) => annotationScopeId(item.screenId, item.stateId) !== scopeId), canonical]
+      updatePageDescriptionManifest(canonical.screenId, canonical.stateId, 1, canonical.highlighted, canonical.highlightColor)
+      if (!pageDescriptionManifest.value) throw new Error('页面描述索引未初始化')
+      const savedManifest = await saveRemotePageDescriptionManifest(pageDescriptionManifest.value, author, scopeId)
+      if (!savedManifest) throw new Error(`页面描述 ${scopeId} 已写入，但 manifest 回读失败`)
+      pageDescriptionManifest.value = savedManifest.value
+      syncedScopes.push(scopeId)
+    } catch (error) {
+      failedScopes.push({ scopeId, error: error instanceof Error ? error.message : '未知错误' })
+    }
   }
   syncPageDescriptionEditor()
-  setCollaborationSource('pageDescriptions', 'gitee', 'success', `已从 JSON 同步 ${syncedScopes.length} 个页面描述`, new Date().toISOString())
-  return { syncedScopes, total: seed.length }
+  const message = `JSON 同步完成：成功 ${syncedScopes.length}，跳过 ${skippedScopes.length}，失败 ${failedScopes.length}`
+  setCollaborationSource('pageDescriptions', 'gitee', failedScopes.length ? 'error' : 'success', message, new Date().toISOString())
+  return { syncedScopes, skippedScopes, failedScopes, total: targets.length }
 }
 
 function exportAnnotations() {
