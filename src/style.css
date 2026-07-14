@@ -128,6 +128,33 @@
     @apply bg-white text-ink ring-white;
   }
 
+  @media (max-width: 640px) {
+    .mobile-pure-interactive .update-banner {
+      left: 12px;
+      right: 12px;
+      top: max(12px, env(safe-area-inset-top));
+      border: 1px solid rgb(255 255 255 / 0.2);
+      border-radius: var(--ds-rounded-lg);
+      padding: 8px 10px;
+    }
+
+    .mobile-pure-interactive .update-banner-inner {
+      min-height: 36px;
+    }
+
+    .mobile-pure-interactive .update-banner p {
+      font-size: 12px;
+      line-height: 16px;
+    }
+
+    .mobile-pure-interactive .update-banner-actions button {
+      height: 32px;
+      padding-left: 10px;
+      padding-right: 10px;
+      font-size: 12px;
+    }
+  }
+
   .top-chrome .apple-subnav {
     position: static;
   }
@@ -4119,7 +4146,6 @@
     padding-top: 0 !important;
   }
 
-  .presentation-mode .update-banner,
   .presentation-mode .top-chrome,
   .presentation-mode .apple-hero-copy,
   .presentation-mode .interactive-side-nav,

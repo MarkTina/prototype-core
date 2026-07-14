@@ -42,6 +42,7 @@
 | Gitee 协作 | “配置协作”“同步 Gitee”“初始化远端” | `runtimeConfig.collaboration` | 注入连接和分支上下文；验证读写；不得硬编码真实值 |
 | OSS | “配置 OSS”“Bug 图片”“上传附件” | `runtimeConfig.oss` | 注入四项配置；验证上传和访问 URL；说明浏览器端暴露风险 |
 | 部署检查 | “部署变量”“环境检测”“测试服/正式服” | 构建配置、`runtimeConfig.environment` | 只传存在状态布尔值；比较构建产物、远端上下文和域名缓存 |
+| 业务版本通知 | “版本推送”“升级通知”“提醒刷新”“version.json” | Vite 构建配置、入口、部署缓存 | 同次构建生成唯一版本指纹；注册 `runtimeConfig.versionUpdate`；发布 `version.json`；验证旧窗口提示 |
 | 升级内核 | “升级脚手架”“更新内核”“使用最新版” | `package.json`、锁文件 | 更新依赖、检查类型/API 变化、完整回归，不复制源码 |
 | 验证交付 | “验证”“验收”“回归”“提交” | 消费者脚本和运行页面 | 执行项目命令、三模式回归、协作资源验证、报告 Git 状态 |
 
@@ -370,6 +371,10 @@ await window.__PROTOTYPE_CORE__.syncPageDescriptionsFromJson({ scopeIds: ['<scop
 import type { PrototypeRuntimeConfig } from '@marktowin/prototype-core'
 
 export const runtimeConfig: PrototypeRuntimeConfig = {
+  versionUpdate: {
+    currentVersion: __BUSINESS_APP_VERSION__,
+    builtAt: __BUSINESS_APP_BUILT_AT__,
+  },
   auth: {
     enabled: runtimeEnv.authEnabled,
     username: runtimeEnv.authUsername,
@@ -415,6 +420,99 @@ export const runtimeConfig: PrototypeRuntimeConfig = {
 | `oss` | 测试图片上传成功，返回 URL 可访问，Bug 中只保存元数据 |
 | `tools` | 删除口令读取正确，错误口令不会删除 |
 | `environment.deployment` | 只传布尔存在状态，环境面板显示正确，浏览器包中不含真实部署值 |
+| `versionUpdate` | 当前页面版本与 `version.json.version` 来自同一次构建；旧窗口能发现新版本；刷新后不重复提示 |
+
+### 8.4 业务版本注册与升级通知
+
+当用户提到“业务升级通知、版本推送、提醒旧窗口刷新、`version.json`”时，业务侧 AI 必须检查并补齐本节。该机制是静态部署友好的轮询通知：每个窗口启动时、固定间隔以及页面恢复可见时读取版本清单；一个窗口发现更新后通过 `BroadcastChannel` 通知同源其他窗口。它不要求业务服务维护 WebSocket。
+
+#### 首次注册
+
+消费者构建必须生成一次唯一版本指纹，并把同一个值同时注入运行页面和 `version.json`。禁止分别调用两次 `Date.now()`。可在消费者 `vite.config.ts` 中使用以下模式，已有构建插件时按现有结构合并，不要机械覆盖：
+
+```ts
+import { execFileSync } from 'node:child_process'
+import { defineConfig } from 'vite'
+import vue from '@vitejs/plugin-vue'
+
+const builtAt = new Date().toISOString()
+const commitHash = (() => {
+  try {
+    return execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+  } catch {
+    return 'nogit'
+  }
+})()
+const appVersion = process.env.BUILD_VERSION?.trim() || `${commitHash}-${builtAt}`
+const versionManifest = JSON.stringify({ version: appVersion, builtAt }, null, 2)
+
+export default defineConfig({
+  plugins: [
+    vue(),
+    {
+      name: 'prototype-version-manifest',
+      configureServer(server) {
+        server.middlewares.use('/version.json', (_request, response) => {
+          response.setHeader('Content-Type', 'application/json;charset=UTF-8')
+          response.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
+          response.end(versionManifest)
+        })
+      },
+      generateBundle() {
+        this.emitFile({ type: 'asset', fileName: 'version.json', source: versionManifest })
+      },
+    },
+  ],
+  define: {
+    __BUSINESS_APP_VERSION__: JSON.stringify(appVersion),
+    __BUSINESS_APP_BUILT_AT__: JSON.stringify(builtAt),
+  },
+})
+```
+
+在消费者 `src/vite-env.d.ts` 声明构建常量：
+
+```ts
+/// <reference types="vite/client" />
+
+declare const __BUSINESS_APP_VERSION__: string
+declare const __BUSINESS_APP_BUILT_AT__: string
+```
+
+入口注册：
+
+```ts
+const runtimeConfig: PrototypeRuntimeConfig = {
+  versionUpdate: {
+    currentVersion: __BUSINESS_APP_VERSION__,
+    builtAt: __BUSINESS_APP_BUILT_AT__,
+    // manifestUrl: '/version.json', // 默认按 runtimeConfig.baseUrl 解析
+    // intervalMs: 60_000,           // 最小 10 秒，默认 60 秒
+  },
+}
+```
+
+未注册 `currentVersion` 时，内核会关闭业务版本检测，不请求无意义的清单。`BUILD_VERSION` 建议由 CI 提供；没有 CI 构建号时才回退到 commit 与构建时间组合。同一 commit 重新部署也需要通知时，版本指纹必须包含构建号或构建时间。
+
+#### 每次业务发布
+
+首次接入完成后，不需要在内核手工登记更新内容。业务侧 AI 只需执行消费者已有构建与部署流程，并确认：
+
+1. 新构建产物中的页面当前版本与 `dist/version.json.version` 完全相同。
+2. 先上传带内容 hash 的 JS/CSS/图片，再发布 `index.html`，最后发布 `version.json`。
+3. `version.json` 使用 `Cache-Control: no-cache, no-store, must-revalidate`。
+4. `index.html` 禁止长期缓存或要求每次重新验证；带 hash 的静态资源可长期 `immutable`。
+5. CDN 不得缓存旧 `version.json`；必要时在发布后单独刷新该路径。
+
+#### 完成判定
+
+- 旧窗口保持打开，部署新构建后能在轮询周期内出现刷新提示。
+- 同源其他窗口能通过广播同步出现提示；不同浏览器或设备分别通过轮询发现。
+- 页面从后台恢复可见时立即检查一次。
+- 点击刷新后加载新版本，不再次提示同一版本。
+- 关闭提示后只忽略当前远端版本；下一次新版本仍会提示。
+- 清单 404、超时或格式错误只记录日志，不阻断原型主流程。
+- 子路径部署时，实际请求地址位于 `runtimeConfig.baseUrl` 下，或由 `manifestUrl` 明确覆盖。
 
 ## 9. 本地种子、缓存与 Gitee 的关系
 
@@ -508,6 +606,7 @@ Git 状态：未提交 / 已提交 / 已推送
 - [ ] 本地种子、缓存和 Gitee 真值的状态已区分报告。
 - [ ] 交互、全图、流程、批注和演示模式均按影响范围回归。
 - [ ] 启用的认证、协作、OSS、工具和部署检查逐项验证。
+- [ ] 已注册业务构建版本，页面版本与 `version.json` 一致，旧窗口升级提示已验证。
 - [ ] 消费者类型检查、校验和构建通过。
 - [ ] 仓库不包含意外 Secret、构建产物、日志或无关改动。
 - [ ] 交付报告明确列出所有未完成与未验证项。

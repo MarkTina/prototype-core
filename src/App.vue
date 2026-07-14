@@ -12,6 +12,7 @@ import { usePrototypeContext, useFlowEditorContext } from './prototype/useProtot
 import { useProductBugs } from './tools/bugs/useProductBugs'
 import type { DataSource, DisplayScreen, PrototypeAnnotation } from './types/prototype'
 import { getPrototypeRuntime } from './core/productAdapter'
+import { createVersionManifestUrl, normalizeVersionManifest, shouldNotifyVersion, type PrototypeVersionManifest } from './core/versionUpdate'
 
 const {
   themeColorFields,
@@ -1173,18 +1174,18 @@ watch(isMobilePureInteractive, (enabled) => {
   hoveredAnnotationId.value = ''
 })
 
-type VersionManifest = {
-  version?: string
-  builtAt?: string
-}
-
-const UPDATE_CHECK_INTERVAL = 60 * 1000
-const currentAppVersion = __APP_VERSION__
-const currentAppBuiltAt = __APP_BUILT_AT__
+const versionUpdateConfig = runtimeConfig.versionUpdate
+const currentAppVersion = typeof versionUpdateConfig?.currentVersion === 'string' ? versionUpdateConfig.currentVersion.trim() : ''
+const currentAppBuiltAt = typeof versionUpdateConfig?.builtAt === 'string' ? versionUpdateConfig.builtAt.trim() : ''
+const updateCheckInterval = Math.max(10_000, versionUpdateConfig?.intervalMs ?? 60_000)
+const versionUpdateEnabled = Boolean(currentAppVersion)
 const showUpdatePrompt = ref(false)
 const pendingUpdateVersion = ref('')
 const dismissedUpdateVersion = ref('')
 let updateCheckTimer: ReturnType<typeof window.setInterval> | undefined
+let updateCheckPromise: Promise<void> | undefined
+let updateCheckController: AbortController | undefined
+let versionUpdateChannel: BroadcastChannel | undefined
 let collaborationPollingTimer: ReturnType<typeof window.setInterval> | undefined
 
 function stopCollaborationPolling() {
@@ -1365,23 +1366,73 @@ watch(annotationPollingIntervalSeconds, () => {
 })
 
 function startUpdateChecks() {
-  if (updateCheckTimer) return
-  checkForAppUpdate()
-  updateCheckTimer = window.setInterval(checkForAppUpdate, UPDATE_CHECK_INTERVAL)
+  if (!versionUpdateEnabled || updateCheckTimer) return
+  const channelPath = createVersionManifestUrl(runtimeConfig.baseUrl ?? '/', versionUpdateConfig?.manifestUrl, window.location.origin, 0).pathname
+  if (typeof BroadcastChannel !== 'undefined') {
+    versionUpdateChannel = new BroadcastChannel(`prototype-core-version:${channelPath}`)
+    versionUpdateChannel.addEventListener('message', handleVersionUpdateBroadcast)
+  }
+  document.addEventListener('visibilitychange', handleVersionVisibilityChange)
+  void checkForAppUpdate()
+  updateCheckTimer = window.setInterval(() => void checkForAppUpdate(), updateCheckInterval)
 }
 
-async function checkForAppUpdate() {
-  const requestUrl = `/version.json?ts=${Date.now()}`
+function stopUpdateChecks() {
+  if (updateCheckTimer) window.clearInterval(updateCheckTimer)
+  updateCheckTimer = undefined
+  updateCheckController?.abort()
+  updateCheckController = undefined
+  updateCheckPromise = undefined
+  document.removeEventListener('visibilitychange', handleVersionVisibilityChange)
+  versionUpdateChannel?.removeEventListener('message', handleVersionUpdateBroadcast)
+  versionUpdateChannel?.close()
+  versionUpdateChannel = undefined
+}
+
+function handleVersionVisibilityChange() {
+  if (document.visibilityState === 'visible') void checkForAppUpdate()
+}
+
+function handleVersionUpdateBroadcast(event: MessageEvent<unknown>) {
+  const manifest = normalizeVersionManifest(event.data)
+  if (manifest) handleRemoteVersion(manifest, false)
+}
+
+function handleRemoteVersion(manifest: PrototypeVersionManifest, broadcast: boolean) {
+  if (!shouldNotifyVersion(currentAppVersion, manifest.version, dismissedUpdateVersion.value)) return
+  if (pendingUpdateVersion.value === manifest.version && showUpdatePrompt.value) return
+  pendingUpdateVersion.value = manifest.version
+  showUpdatePrompt.value = true
+  if (broadcast) versionUpdateChannel?.postMessage(manifest)
+  console.info('🔔 [版本检测] 检测到新版本，准备展示刷新提示', { currentVersion: currentAppVersion, remoteVersion: manifest.version, remoteBuiltAt: manifest.builtAt })
+}
+
+function checkForAppUpdate() {
+  if (!versionUpdateEnabled) return Promise.resolve()
+  if (updateCheckPromise) return updateCheckPromise
+  updateCheckPromise = runAppUpdateCheck().finally(() => {
+    updateCheckPromise = undefined
+    updateCheckController = undefined
+  })
+  return updateCheckPromise
+}
+
+async function runAppUpdateCheck() {
+  const requestUrl = createVersionManifestUrl(runtimeConfig.baseUrl ?? '/', versionUpdateConfig?.manifestUrl, window.location.origin, Date.now())
+  const controller = new AbortController()
+  updateCheckController = controller
+  const timeout = window.setTimeout(() => controller.abort(), 10_000)
 
   console.info('🔎 [版本检测] 开始请求版本清单', {
     currentVersion: currentAppVersion,
     currentBuiltAt: currentAppBuiltAt,
-    requestUrl,
+    requestUrl: requestUrl.toString(),
   })
 
   try {
     const response = await fetch(requestUrl, {
       cache: 'no-store',
+      signal: controller.signal,
     })
 
     if (!response.ok) {
@@ -1394,9 +1445,9 @@ async function checkForAppUpdate() {
       return
     }
 
-    const manifest = (await response.json()) as VersionManifest
-    const remoteVersion = manifest.version?.trim()
-    const remoteBuiltAt = manifest.builtAt?.trim()
+    const manifest = normalizeVersionManifest(await response.json())
+    const remoteVersion = manifest?.version
+    const remoteBuiltAt = manifest?.builtAt
 
     console.info('📦 [版本检测] 服务器版本清单', {
       currentVersion: currentAppVersion,
@@ -1406,7 +1457,7 @@ async function checkForAppUpdate() {
       dismissedVersion: dismissedUpdateVersion.value || null,
     })
 
-    if (!remoteVersion) {
+    if (!manifest) {
       console.warn('⚠️ [版本检测] 服务器版本字段为空，无法判断是否更新', {
         currentVersion: currentAppVersion,
         currentBuiltAt: currentAppBuiltAt,
@@ -1415,7 +1466,9 @@ async function checkForAppUpdate() {
       return
     }
 
-    if (remoteVersion === dismissedUpdateVersion.value) {
+    const validRemoteVersion = manifest.version
+
+    if (validRemoteVersion === dismissedUpdateVersion.value) {
       console.info('🙈 [版本检测] 服务器版本已被本次会话忽略，不再提示', {
         currentVersion: currentAppVersion,
         remoteVersion,
@@ -1424,34 +1477,27 @@ async function checkForAppUpdate() {
       return
     }
 
-    if (remoteVersion === currentAppVersion) {
+    if (!shouldNotifyVersion(currentAppVersion, validRemoteVersion, dismissedUpdateVersion.value)) {
       console.info('✅ [版本检测] 未发现新版本', {
         currentVersion: currentAppVersion,
         currentBuiltAt: currentAppBuiltAt,
         remoteVersion,
         remoteBuiltAt,
         builtAtChanged: remoteBuiltAt ? remoteBuiltAt !== currentAppBuiltAt : false,
-        reason: '当前逻辑只比较 version；如果只重新 build 但没有新 commit，git hash 版本号不会变化。',
+        reason: '当前逻辑只比较 version；builtAt 仅用于诊断。',
       })
       return
     }
 
-    console.info('🔔 [版本检测] 检测到新版本，准备展示刷新提示', {
-      currentVersion: currentAppVersion,
-      currentBuiltAt: currentAppBuiltAt,
-      remoteVersion,
-      remoteBuiltAt,
-    })
-
-    pendingUpdateVersion.value = remoteVersion
-    showUpdatePrompt.value = true
+    handleRemoteVersion(manifest, true)
   } catch (error) {
     console.error('❌ [版本检测] 请求或解析版本清单失败', {
       currentVersion: currentAppVersion,
       currentBuiltAt: currentAppBuiltAt,
       error,
     })
-    // 版本检测失败不影响主流程，下一轮轮询会继续尝试。
+  } finally {
+    window.clearTimeout(timeout)
   }
 }
 
@@ -1619,9 +1665,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleShortcutKeydown)
   overviewResizeObserver?.disconnect()
   overviewResizeObserver = undefined
-  if (updateCheckTimer) {
-    window.clearInterval(updateCheckTimer)
-  }
+  stopUpdateChecks()
   if (interactionModeToastTimer) {
     window.clearTimeout(interactionModeToastTimer)
   }
@@ -1637,6 +1681,15 @@ onBeforeUnmount(() => {
     ]"
     :style="themeStyle"
   >
+    <div v-if="showUpdatePrompt && isAuthenticated" class="update-banner">
+      <div class="update-banner-inner">
+        <p>🔔 检测到新版本，刷新后即可使用最新页面</p>
+        <div class="update-banner-actions">
+          <button type="button" @click="reloadForUpdate">刷新</button>
+          <button type="button" aria-label="关闭更新提示" @click="dismissUpdatePrompt">×</button>
+        </div>
+      </div>
+    </div>
     <PrototypeCoreHelpPage v-if="appRoute === 'help'" @close="closeHelpPage" />
     <PrototypeCoreThemeGuidePage v-else-if="appRoute === 'themeGuide'" @close="closeThemeGuidePage" />
     <section v-else-if="!isAuthenticated" class="flex min-h-screen items-center justify-center px-5 py-10">
@@ -1671,15 +1724,6 @@ onBeforeUnmount(() => {
       </form>
     </section>
     <template v-else>
-    <div v-if="showUpdatePrompt && !isMobilePureInteractive" class="update-banner">
-      <div class="update-banner-inner">
-        <p>🔔 检测到新版本，刷新后即可使用最新页面</p>
-        <div class="update-banner-actions">
-          <button type="button" @click="reloadForUpdate">刷新</button>
-          <button type="button" aria-label="关闭更新提示" @click="dismissUpdatePrompt">×</button>
-        </div>
-      </div>
-    </div>
     <div v-if="!isMobilePureInteractive" class="top-chrome">
     <div class="apple-subnav">
       <div class="project-identity">

@@ -29,6 +29,8 @@ void mountPrototypeApp({
 
 涉及 UI 或主题实现时，可访问 `#/prototype-core-theme` 阅读并复制主题实现准则；该页面内容来自构建时内嵌的 `DESIGN-TOKENS.md`。
 
+消费者可通过 `runtimeConfig.versionUpdate` 注册业务构建版本。内核会在启动、每分钟轮询和页面恢复可见时读取 `version.json`，发现新版本后通知所有已打开窗口刷新；同源窗口会通过 `BroadcastChannel` 加速同步。当前页面版本与 `version.json.version` 必须由消费者同一次构建生成，完整 Vite 接入、部署顺序和缓存规则见 `AI-PROTOTYPE-GUIDE.md` 的“业务版本注册与升级通知”。未注册 `currentVersion` 时该检测关闭。
+
 AI 修改消费者 `page-descriptions.json` 后，可在已启用 Gitee 协作的应用页面上下文执行 `await window.__PROTOTYPE_CORE__.syncPageDescriptionsFromJson()`。该指令只写入远端缺失或内容变化的 scope，完成 manifest 合并、远端回读和缓存刷新；不会删除 JSON 中未列出的远端 scope。指定单个 scope 时传入 `await window.__PROTOTYPE_CORE__.syncPageDescriptionsFromJson({ scopeIds: ['home'] })`。返回值分别列出 `syncedScopes`、`skippedScopes` 和 `failedScopes`，单个 scope 失败不会中止其余目标。
 
 也可从消费者项目终端执行同一类差异同步和精确回读。Token 只从 `AGENT_GITEE_ACCESS_TOKEN` 或 `GITEE_TOKEN` 读取：

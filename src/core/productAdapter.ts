@@ -30,6 +30,12 @@ export interface PrototypeProductDefinition {
 
 export interface PrototypeRuntimeConfig {
   baseUrl?: string
+  versionUpdate?: {
+    currentVersion: string
+    builtAt?: string
+    manifestUrl?: string
+    intervalMs?: number
+  }
   auth?: {
     enabled?: boolean
     username?: string
