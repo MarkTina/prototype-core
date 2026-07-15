@@ -43,6 +43,8 @@
 | Gitee 协作 | “配置协作”“同步 Gitee”“初始化远端” | `runtimeConfig.collaboration` | 注入连接和分支上下文；验证读写；不得硬编码真实值 |
 | OSS | “配置 OSS”“Bug 图片”“上传附件” | `runtimeConfig.oss` | 注入四项配置；验证上传和访问 URL；说明浏览器端暴露风险 |
 | 部署检查 | “部署变量”“环境检测”“测试服/正式服” | 构建配置、`runtimeConfig.environment` | 只传存在状态布尔值；比较构建产物、远端上下文和域名缓存 |
+| 产品文档配置 | “产品需求文档”“文档地址”“顶部标题”“顶部描述” | `PrototypeProductDefinition.document` | 配置文档标题、描述和 URL；验证按钮在新标签页打开目标文档 |
+| 更新历史 | “更新历史”“提交记录”“Git 历史” | Vite 构建配置、`PrototypeProductDefinition.updateHistory` | 构建时读取消费者仓库提交；注入产品定义；验证最新和历史记录 |
 | 业务版本通知 | “版本推送”“升级通知”“提醒刷新”“version.json” | Vite 构建配置、入口、部署缓存 | 同次构建生成唯一版本指纹；注册 `runtimeConfig.versionUpdate`；发布 `version.json`；验证旧窗口提示 |
 | 升级内核 | “升级脚手架”“更新内核”“使用最新版” | `package.json`、锁文件 | 更新依赖、检查类型/API 变化、完整回归，不复制源码 |
 | 验证交付 | “验证”“验收”“回归”“提交” | 消费者脚本和运行页面 | 执行项目命令、三模式回归、协作资源验证、报告 Git 状态 |
@@ -132,6 +134,12 @@ import type { PrototypeProductDefinition } from '@marktowin/prototype-core'
 import HomeScreen from './screens/HomeScreen.vue'
 
 export const product: PrototypeProductDefinition = {
+  document: {
+    title: '示例产品',
+    description: '示例产品需求文档',
+    url: 'https://example.com/product-requirements',
+  },
+  updateHistory: __BUSINESS_UPDATE_HISTORY__,
   pages: [
     {
       id: 'home',
@@ -168,7 +176,104 @@ export const product: PrototypeProductDefinition = {
 }
 ```
 
-ID 规则：
+### 5.1 顶部产品文档配置
+
+顶部左侧的标题和描述用于说明当前产品文档，右侧“产品需求文档”按钮读取同一份 `document` 配置。配置属于消费者产品定义，不应写入内核源码或 `runtimeConfig`：
+
+```ts
+export const product: PrototypeProductDefinition = {
+  document: {
+    title: '产品名称或文档标题',
+    description: '当前产品需求文档的简短说明',
+    url: 'https://example.com/product-requirements',
+  },
+  // pages、states、copy、flows...
+}
+```
+
+字段说明：
+
+| 字段 | 是否必填 | 用途 |
+| --- | --- | --- |
+| `title` | 配置 `document` 时必填 | 顶部左侧主标题，描述当前产品文档 |
+| `description` | 配置 `document` 时必填 | 顶部左侧副标题，补充当前产品文档范围或用途 |
+| `url` | 可选 | “产品需求文档”按钮的新标签页目标地址 |
+
+- `document` 为兼容旧消费者保持可选；新接入或升级后的消费者应显式配置。
+- 未配置 `url` 或内容为空时，点击按钮不会打开新标签页，而是提示在 `PrototypeProductDefinition.document.url` 中配置。
+- URL 应由消费者业务侧维护。公开仓库和示例只能使用公开地址或虚构值，不得写入 Token、口令或带鉴权参数的私有链接。
+- 标题区域仍用于返回原型首页；打开文档使用右侧“产品需求文档”按钮。
+
+完成判定：顶部标题和描述与配置一致；点击按钮能在新标签页打开目标文档；临时移除 `url` 后点击只显示未配置提示，不产生空白标签页。
+
+### 5.2 业务更新历史接入
+
+顶部“更新历史”展示消费者业务仓库的 Git 提交标题和正文，不展示内核仓库提交。历史属于当前业务构建的产品内容，通过 `PrototypeProductDefinition.updateHistory` 注入；不放入 `runtimeConfig`，也不由浏览器调用 GitHub/Gitee API。
+
+在消费者 `vite.config.ts` 构建时读取当前 `HEAD` 最近 20 条提交：
+
+```ts
+import { execFileSync } from 'node:child_process'
+
+const updateHistory = (() => {
+  try {
+    const output = execFileSync(
+      'git',
+      ['log', '-20', '--date=short', '--pretty=format:%h%x1f%ad%x1f%s%x1f%b%x1e', 'HEAD'],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+    )
+    return output
+      .split('\x1e')
+      .map((record) => record.trim())
+      .filter(Boolean)
+      .map((record) => {
+        const [hash = '', date = '', message = '', ...detailParts] = record.split('\x1f')
+        return { hash, date, message, details: detailParts.join('\x1f').trim() }
+      })
+      .filter((item) => item.hash && item.date && item.message)
+  } catch (error) {
+    console.warn('⚠️ [更新历史] 无法读取消费者 Git 提交记录，将使用空历史', error)
+    return []
+  }
+})()
+
+export default defineConfig({
+  // 保留消费者已有 plugins、server 和其他配置。
+  define: {
+    __BUSINESS_UPDATE_HISTORY__: JSON.stringify(updateHistory),
+  },
+})
+```
+
+在消费者 `src/vite-env.d.ts` 声明构建常量：
+
+```ts
+declare const __BUSINESS_UPDATE_HISTORY__: Array<{
+  hash: string
+  date: string
+  message: string
+  details: string
+}>
+```
+
+在产品定义中注册：
+
+```ts
+export const product: PrototypeProductDefinition = {
+  updateHistory: __BUSINESS_UPDATE_HISTORY__,
+  // document、pages、states、copy、flows...
+}
+```
+
+- `message` 来自提交标题，`details` 来自提交正文；需要有可读详情时，应在提交 body 中记录变更点。
+- 只包含已提交到当前构建 `HEAD` 的记录，不包含未提交工作区内容。
+- CI checkout 必须保留足够历史；GitHub Actions 使用 `actions/checkout` 时应设置 `fetch-depth: 20` 或 `0`，否则浅克隆可能只能生成一条记录。
+- Git 不可用时构建降级为空数组并输出警告；不得改为浏览器携带 Token 读取远端仓库。
+- 未配置 `updateHistory` 时，弹窗明确提示业务侧尚未接入；显式配置空数组时显示“暂无提交记录”。
+
+完成判定：弹窗第一条与当前构建 `HEAD` 一致；提交标题、日期、短 SHA 和多行正文正确；历史顺序由新到旧；CI 构建产物不因浅克隆缺失预期记录。
+
+### 5.3 ID 规则
 
 - `screenId` 全局唯一，并在页面注册、状态、流程、跳转和协作 scope 中完全一致。
 - `stateId` 只属于对应页面，必须在页面实现、状态注册、流程和页面描述中一致。

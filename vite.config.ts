@@ -6,7 +6,6 @@ import packageJson from './package.json'
 export default defineConfig({
   plugins: [vue(), dts({ insertTypesEntry: true })],
   define: {
-    __GIT_HISTORY__: '[]',
     __APP_GIT_BRANCH__: JSON.stringify(''),
     __CORE_PACKAGE_VERSION__: JSON.stringify(packageJson.version),
   },

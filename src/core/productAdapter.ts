@@ -14,7 +14,22 @@ export interface PrototypeNavigationApi {
   }
 }
 
+export interface PrototypeProductDocument {
+  title: string
+  description: string
+  url?: string
+}
+
+export interface PrototypeUpdateHistoryItem {
+  hash: string
+  date: string
+  message: string
+  details: string
+}
+
 export interface PrototypeProductDefinition {
+  document?: PrototypeProductDocument
+  updateHistory?: PrototypeUpdateHistoryItem[]
   pages: ScreenMeta[]
   copy: {
     zh: Record<string, string>

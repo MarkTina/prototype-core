@@ -1365,6 +1365,10 @@
     @apply fixed bottom-5 left-1/2 z-[120] -translate-x-1/2 rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_40px_rgb(0_0_0/0.22)];
   }
 
+  .product-document-toast {
+    @apply max-w-[calc(100vw-2rem)] whitespace-normal text-center;
+  }
+
   .shortcut-toast-enter-active,
   .shortcut-toast-leave-active {
     @apply transition duration-200 ease-out;

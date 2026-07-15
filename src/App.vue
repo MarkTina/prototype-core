@@ -13,7 +13,7 @@ import { usePrototypeContext, useFlowEditorContext } from './prototype/useProtot
 import { useProductBugs } from './tools/bugs/useProductBugs'
 import { useTestCases } from './tools/test-cases/useTestCases'
 import type { DataSource, DisplayScreen, PrototypeAnnotation } from './types/prototype'
-import { getPrototypeRuntime } from './core/productAdapter'
+import { getPrototypeProduct, getPrototypeRuntime, type PrototypeUpdateHistoryItem } from './core/productAdapter'
 import { createVersionManifestUrl, normalizeVersionManifest, shouldNotifyVersion, type PrototypeVersionManifest } from './core/versionUpdate'
 
 const {
@@ -454,10 +454,12 @@ function handleAuthSubmit() {
   startAuthenticatedApp()
 }
 
-const gitHistory = __GIT_HISTORY__
+const product = getPrototypeProduct()
+const updateHistoryConfigured = product.updateHistory !== undefined
+const updateHistory = product.updateHistory ?? []
 const showUpdateHistory = ref(false)
-const expandedHistoryHash = ref(gitHistory[0]?.hash ?? '')
-const latestUpdateTime = computed(() => gitHistory[0]?.date ?? '暂无记录')
+const expandedHistoryHash = ref(updateHistory[0]?.hash ?? '')
+const latestUpdateTime = computed(() => updateHistory[0]?.date ?? '暂无记录')
 const appRoute = ref<'prototype' | 'bugs' | 'testCases' | 'help' | 'themeGuide'>('prototype')
 const interactiveSideNavRef = ref<HTMLElement | null>(null)
 const interactiveSideNavCanScrollUp = ref(false)
@@ -466,12 +468,33 @@ const interactiveFlowNavCollapsed = ref(false)
 const dataSourcePanelCollapsed = ref(false)
 const shortcutPanelCollapsed = ref(true)
 const interactionModeToastVisible = ref(false)
+const productDocumentToastVisible = ref(false)
 const isMobileViewport = ref(false)
 const isMobilePureInteractive = computed(() =>
   isMobileViewport.value && currentScreenPlatform.value === 'mobile',
 )
 const presentationMode = ref(false)
 let interactionModeToastTimer: ReturnType<typeof window.setTimeout> | undefined
+let productDocumentToastTimer: ReturnType<typeof window.setTimeout> | undefined
+
+const productDocument = product.document
+const productDocumentTitle = computed(() => productDocument?.title.trim() || t('prototypeTitle'))
+const productDocumentDescription = computed(() => productDocument?.description.trim() || t('prototypeSubtitle'))
+
+function openProductDocument() {
+  const url = productDocument?.url?.trim()
+  if (url) {
+    window.open(url, '_blank', 'noopener,noreferrer')
+    return
+  }
+
+  productDocumentToastVisible.value = true
+  if (productDocumentToastTimer) window.clearTimeout(productDocumentToastTimer)
+  productDocumentToastTimer = window.setTimeout(() => {
+    productDocumentToastVisible.value = false
+    productDocumentToastTimer = undefined
+  }, 3000)
+}
 
 function showInteractionModeToast() {
   interactionModeToastVisible.value = true
@@ -682,13 +705,13 @@ function getAnnotationLayer(content: HTMLElement) {
   return content.querySelector<HTMLElement>('.annotation-layer')
 }
 
-function computeAnnotationPositionFromEvent(event: PointerEvent | MouseEvent, content: HTMLElement) {
-  const rect = content.getBoundingClientRect()
+function computeAnnotationPositionFromClientPoint(clientX: number, clientY: number, content: HTMLElement) {
+  const contentRect = content.getBoundingClientRect()
   const layer = getAnnotationLayer(content)
-  const fullWidth = layer?.scrollWidth ?? rect.width
-  const fullHeight = layer?.scrollHeight ?? rect.height
-  const x = ((event.clientX - rect.left + content.scrollLeft) / fullWidth) * 100
-  const y = ((event.clientY - rect.top + content.scrollTop) / fullHeight) * 100
+  const layerRect = layer?.getBoundingClientRect()
+  const rect = layerRect && layerRect.width > 0 && layerRect.height > 0 ? layerRect : contentRect
+  const x = ((clientX - rect.left) / rect.width) * 100
+  const y = ((clientY - rect.top) / rect.height) * 100
   return { x: Math.min(96, Math.max(4, x)), y: Math.min(96, Math.max(4, y)) }
 }
 
@@ -714,7 +737,12 @@ function handleAnnotationPointPointerDown(annotation: PrototypeAnnotation, event
     if (!annotationPress || annotationPress.pointerId !== event.pointerId) return
     annotationPress.activated = true
     annotationHoldId.value = ''
-    annotationDragPreview.value = { id: annotation.id, x: annotation.x, y: annotation.y }
+    const { x, y } = computeAnnotationPositionFromClientPoint(
+      annotationPress.startClientX,
+      annotationPress.startClientY,
+      annotationPress.content,
+    )
+    annotationDragPreview.value = { id: annotationPress.annotation.id, x, y }
   }, 800)
 }
 
@@ -728,7 +756,7 @@ function handleAnnotationPointPointerMove(event: PointerEvent) {
 
   event.preventDefault()
   event.stopPropagation()
-  const { x, y } = computeAnnotationPositionFromEvent(event, annotationPress.content)
+  const { x, y } = computeAnnotationPositionFromClientPoint(event.clientX, event.clientY, annotationPress.content)
   annotationDragPreview.value = { id: annotationPress.annotation.id, x, y }
 }
 
@@ -1132,7 +1160,7 @@ function toggleHistoryDetail(hash: string) {
   expandedHistoryHash.value = expandedHistoryHash.value === hash ? '' : hash
 }
 
-function historyDetailLines(item: GitHistoryItem) {
+function historyDetailLines(item: PrototypeUpdateHistoryItem) {
   return item.details
     .split('\n')
     .map((line) => line.trim())
@@ -1689,6 +1717,9 @@ onBeforeUnmount(() => {
   if (interactionModeToastTimer) {
     window.clearTimeout(interactionModeToastTimer)
   }
+  if (productDocumentToastTimer) {
+    window.clearTimeout(productDocumentToastTimer)
+  }
 })
 </script>
 
@@ -1748,23 +1779,22 @@ onBeforeUnmount(() => {
     <div class="apple-subnav">
       <div class="project-identity">
         <button class="project-title-btn" type="button" @click="openPrototypePage()">
-          <p class="text-[21px] font-semibold leading-none">{{ t('prototypeTitle') }}</p>
-          <p class="mt-1 text-xs text-muted">{{ t('prototypeSubtitle') }}</p>
+          <p class="text-[21px] font-semibold leading-none">{{ productDocumentTitle }}</p>
+          <p class="mt-1 text-xs text-muted">{{ productDocumentDescription }}</p>
         </button>
         <div class="core-version-stack" aria-label="原型内核版本">
-          <p><span>当前</span><b>v{{ currentCoreVersion }}</b></p>
-          <p><span>最新</span><b :class="{ 'text-warning': hasNewerCoreVersion }">{{ latestCoreVersionLabel }}</b></p>
+          <p><span>内核当前</span><b>v{{ currentCoreVersion }}</b></p>
+          <p><span>内核最新</span><b :class="{ 'text-warning': hasNewerCoreVersion }">{{ latestCoreVersionLabel }}</b></p>
         </div>
       </div>
       <div class="flex flex-wrap items-center justify-end gap-x-1.5 gap-y-2">
-        <a
+        <button
           class="mode-btn top-level-mode-btn rounded-full bg-panel ring-1 ring-line"
-          href="https://altimodo-doc.doc.gominex.com/"
-          target="_blank"
-          rel="noopener noreferrer"
+          type="button"
+          @click="openProductDocument"
         >
           产品需求文档
-        </a>
+        </button>
         <button class="mode-btn top-level-mode-btn rounded-full bg-panel ring-1 ring-line" :class="{ active: showUpdateHistory }" @click="openUpdateHistory">更新历史</button>
         <button class="mode-btn top-level-mode-btn rounded-full bg-panel ring-1 ring-line" :class="{ active: showPrototypeHealthPanel }" @click="openPrototypeHealth">
           健康检查
@@ -2374,6 +2404,11 @@ onBeforeUnmount(() => {
         按快捷键 P 可以进入/退出演示模式
       </div>
     </Transition>
+    <Transition name="shortcut-toast">
+      <div v-if="productDocumentToastVisible && !isMobilePureInteractive && !presentationMode" class="interaction-mode-toast product-document-toast" role="status">
+        还未配置产品文档地址，请在 PrototypeProductDefinition.document.url 中配置
+      </div>
+    </Transition>
     <div v-if="appRoute === 'prototype' && pageDescriptionEditing && !isMobilePureInteractive" class="page-description-dialog-backdrop" @click.self="cancelPageDescriptionEdit">
       <section class="page-description-dialog">
         <div class="page-description-dialog-head">
@@ -2729,7 +2764,7 @@ onBeforeUnmount(() => {
           </button>
         </div>
         <div class="mt-4 max-h-[60vh] space-y-3 overflow-y-auto pr-1">
-          <section v-for="item in gitHistory" :key="item.hash" class="overflow-hidden rounded-[16px] bg-soft transition">
+          <section v-for="item in updateHistory" :key="item.hash" class="overflow-hidden rounded-[16px] bg-soft transition">
             <button type="button" class="w-full p-3 text-left" @click="toggleHistoryDetail(item.hash)">
               <div class="flex items-center justify-between gap-3">
                 <p class="text-sm font-semibold text-ink">{{ item.date }}</p>
@@ -2749,7 +2784,9 @@ onBeforeUnmount(() => {
               <p v-else class="rounded-[12px] bg-panel px-3 py-2 text-xs leading-5 text-muted">暂无更多修改细节</p>
             </div>
           </section>
-          <p v-if="!gitHistory.length" class="rounded-[16px] bg-soft p-3 text-sm text-muted">暂无提交记录</p>
+          <p v-if="!updateHistory.length" class="rounded-[16px] bg-soft p-3 text-sm text-muted">
+            {{ updateHistoryConfigured ? '暂无提交记录' : '业务侧尚未接入更新历史，请在 PrototypeProductDefinition.updateHistory 中配置' }}
+          </p>
         </div>
       </section>
     </div>

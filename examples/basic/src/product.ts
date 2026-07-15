@@ -4,6 +4,12 @@ import MobileHome from './screens/MobileHome.vue'
 import PcDashboard from './screens/PcDashboard.vue'
 
 export const product: PrototypeProductDefinition = {
+  document: {
+    title: 'Prototype Core 基础示例',
+    description: '基础示例产品需求文档',
+    url: 'https://example.com/product-requirements',
+  },
+  updateHistory: __BUSINESS_UPDATE_HISTORY__,
   pages: [
     {
       id: 'mobileHome',

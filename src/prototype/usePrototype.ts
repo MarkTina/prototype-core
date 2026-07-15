@@ -1251,15 +1251,15 @@ function handleAnnotationCanvasClick(event: MouseEvent, screenId: string) {
   event.preventDefault()
   event.stopPropagation()
   const target = event.currentTarget as HTMLElement
-  const rect = target.getBoundingClientRect()
   const layer = target.querySelector<HTMLElement>('.annotation-layer')
-  const fullWidth = layer?.scrollWidth ?? rect.width
-  const fullHeight = layer?.scrollHeight ?? rect.height
+  const targetRect = target.getBoundingClientRect()
+  const layerRect = layer?.getBoundingClientRect()
+  const rect = layerRect && layerRect.width > 0 && layerRect.height > 0 ? layerRect : targetRect
   annotationDraft.value = {
     screenId,
     stateId: normalizePrototypeStateId(screenId, activePrototypeStateId.value),
-    x: Math.round(((event.clientX - rect.left + target.scrollLeft) / fullWidth) * 1000) / 10,
-    y: Math.round(((event.clientY - rect.top + target.scrollTop) / fullHeight) * 1000) / 10,
+    x: Math.round(((event.clientX - rect.left) / rect.width) * 1000) / 10,
+    y: Math.round(((event.clientY - rect.top) / rect.height) * 1000) / 10,
     featureName: '',
     featureDescription: '',
     specialNote: '',

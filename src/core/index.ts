@@ -6,8 +6,10 @@ export type {
   MountPrototypeAppOptions,
   ProductStateItem,
   PrototypeNavigationApi,
+  PrototypeProductDocument,
   PrototypeProductDefinition,
   PrototypeRuntimeConfig,
+  PrototypeUpdateHistoryItem,
 } from './productAdapter'
 export type * from '../types/prototype'
 export { usePrototypeContext } from './contextBridge'
