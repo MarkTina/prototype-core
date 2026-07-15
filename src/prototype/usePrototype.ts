@@ -356,10 +356,11 @@ const pageDescriptionEditor = ref({
 })
 const mainFlows = ref<MainFlow[]>([])
 const collaborationInitialized = ref(false)
-const collaborationEditing = ref<Record<CollaborationDataKind, boolean>>({ annotations: false, pageDescriptions: false, flows: false })
+const collaborationEditing = ref<Record<CollaborationDataKind, boolean>>({ annotations: false, pageDescriptions: false, testCases: false, flows: false })
 const collaborationSources = ref<Record<CollaborationDataKind, CollaborationSourceState>>({
   annotations: { source: 'local-seed', status: 'idle' },
   pageDescriptions: { source: 'local-seed', status: 'idle' },
+  testCases: { source: 'local-seed', status: 'idle' },
   flows: { source: 'local-seed', status: 'idle' },
 })
 const collaborationBootstrapStatus = ref<'idle' | 'running' | 'success' | 'partial'>('idle')

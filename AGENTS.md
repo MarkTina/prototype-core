@@ -47,13 +47,14 @@
 | --- | --- | --- |
 | 页面描述 | `page-descriptions/<scopeId>.json`、`page-descriptions/manifest.json` | 先保存当前 scope 文件，再合并更新 manifest 对应 scope 与页面汇总；保留其他 scope，不整表覆盖 |
 | 注释 | `annotations/<scopeId>.json`、`annotations/manifest.json` | 基于远端当前数组执行新增、编辑、移动或删除，再合并更新 manifest 计数；冲突时停止并要求刷新 |
+| 测试用例 | `test-cases/<scopeId>.json`、`test-cases/manifest.json` | 基于远端当前数组按用例 ID 执行新增、编辑或删除，再合并更新 manifest 计数；冲突时停止并保留草稿 |
 | 流程 | `flows.json` | 编辑器本地保存只生成缓存草稿；只有显式“推送 Gitee”才写远端完整流程文件，成功后清除 dirty 标记 |
 | Bug | `bugs/bugs.json` | 基于远端当前数组执行变换后整体写回；附件先上传消费者注入的 OSS，再把 URL 与元数据写入 Bug |
 
 ### 读取与回退顺序
 
 1. 启动时读取消费者静态种子和当前上下文缓存；存在有效缓存时优先作为即时界面数据，否则使用种子。
-2. `runtimeConfig.collaboration` 完整且 `codeBranch` 可识别时，再读取 Gitee：页面描述与注释按当前 scope 加载，流程和 Bug 读取各自总文件。
+2. `runtimeConfig.collaboration` 完整且 `codeBranch` 可识别时，再读取 Gitee：页面描述、注释与测试用例按当前 scope 加载，流程和 Bug 读取各自总文件。
 3. Gitee 读取成功后覆盖对应内存数据并刷新缓存；读取失败时保留已有缓存或种子并显示错误，不得把回退数据宣称为已同步。
 4. 页面或状态切换后重新读取当前页面描述和注释；轮询期间若对应资源正在编辑，应延迟覆盖。
 

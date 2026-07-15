@@ -12,8 +12,11 @@ test('缓存键按代码分支和数据类型隔离', () => {
   const main = collaborationCacheKey(['gitee', 'owner', 'repo', 'master', 'project', 'main'], 'annotations')
   const feature = collaborationCacheKey(['gitee', 'owner', 'repo', 'master', 'project', 'feature'], 'annotations')
   const flows = collaborationCacheKey(['gitee', 'owner', 'repo', 'master', 'project', 'main'], 'flows')
+  const testCases = collaborationCacheKey(['gitee', 'owner', 'repo', 'master', 'project', 'main'], 'testCases')
   assert.notEqual(main, feature)
   assert.notEqual(main, flows)
+  assert.notEqual(main, testCases)
+  assert.notEqual(flows, testCases)
 })
 
 test('本地回退优先使用缓存，无缓存才使用种子', () => {

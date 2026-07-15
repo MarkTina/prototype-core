@@ -1,4 +1,4 @@
-import type { AnnotationManifest, CollaborationDataKind, MainFlow, PrototypeAnnotation, PrototypePageDescription } from '../types/prototype'
+import type { AnnotationManifest, CollaborationDataKind, MainFlow, PrototypeAnnotation, PrototypePageDescription, PrototypeTestCase } from '../types/prototype'
 import { getCollaborationContext } from './collaborationStore'
 import { createSerialQueue, remoteInitializationDecision, selectGiteeFileResponse } from './collaborationPolicy'
 
@@ -10,6 +10,7 @@ export interface RemotePayload<T> {
 
 export type AnnotationOperation = '新增' | '编辑' | '删除' | '同步索引'
 export type PageDescriptionOperation = '保存' | '同步索引'
+export type TestCaseOperation = '新增' | '编辑' | '删除'
 
 const GITEE_API_BASE = 'https://gitee.com/api/v5'
 const enqueue = createSerialQueue()
@@ -39,6 +40,7 @@ function decodeBase64(value: string) {
 
 function kindPath(kind: CollaborationDataKind) {
   if (kind === 'pageDescriptions') return 'page-descriptions'
+  if (kind === 'testCases') return 'test-cases'
   return kind
 }
 
@@ -51,7 +53,7 @@ function dataPath(kind: CollaborationDataKind, scopeId?: string) {
 
 function legacyPath(kind: CollaborationDataKind, scopeId?: string) {
   const context = getCollaborationContext()
-  if (kind === 'flows') return null
+  if (kind === 'flows' || kind === 'testCases') return null
   if (kind === 'annotations' && !scopeId) return `projects/${context.projectId}/manifest.json`
   if (kind === 'annotations') return `projects/${context.projectId}/annotations/${scopeId}.json`
   if (!scopeId) return `projects/${context.projectId}/page-descriptions/manifest.json`
@@ -122,7 +124,7 @@ async function writeGiteeFile(path: string, value: unknown, sha: string | null, 
 }
 
 function commitMessage(scopeId: string, authorName: string, operation: string, kind: CollaborationDataKind) {
-  const label = kind === 'annotations' ? 'annotations' : kind === 'pageDescriptions' ? 'page description' : 'flows'
+  const label = kind === 'annotations' ? 'annotations' : kind === 'pageDescriptions' ? 'page description' : kind === 'testCases' ? 'test cases' : 'flows'
   return [`docs: update ${scopeId} ${label}`, '', `提交人：${authorName}`, `范围：${scopeId}`, `操作：${operation}`].join('\n')
 }
 
@@ -164,7 +166,7 @@ export function ensureRemoteInitializationMarker(value: unknown, authorName: str
   })
 }
 
-async function saveManifest(kind: 'annotations' | 'pageDescriptions', manifest: AnnotationManifest, authorName: string, scopeId: string) {
+async function saveManifest(kind: 'annotations' | 'pageDescriptions' | 'testCases', manifest: AnnotationManifest, authorName: string, scopeId: string) {
   return enqueue(`${kind}:manifest`, async () => {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const current = await requestGiteeFile(dataPath(kind))
@@ -231,6 +233,33 @@ export function saveRemotePageDescription(scopeId: string, authorName: string, v
 
 export function saveRemotePageDescriptionManifest(manifest: AnnotationManifest, authorName: string, scopeId: string) {
   return saveManifest('pageDescriptions', manifest, authorName, scopeId)
+}
+
+export function loadRemoteTestCaseManifest() {
+  return loadRemote<AnnotationManifest>('testCases')
+}
+
+export function loadRemoteTestCases(scopeId: string) {
+  return loadRemote<PrototypeTestCase[]>('testCases', scopeId)
+}
+
+export async function updateRemoteTestCases(
+  scopeId: string,
+  authorName: string,
+  operation: TestCaseOperation,
+  transform: (remoteValue: PrototypeTestCase[]) => PrototypeTestCase[],
+) {
+  return enqueue(`testCases:${scopeId}`, async () => {
+    const current = await requestGiteeFile(dataPath('testCases', scopeId))
+    const remoteValue = current?.value
+    const next = transform(Array.isArray(remoteValue) ? remoteValue as PrototypeTestCase[] : [])
+    await writeGiteeFile(dataPath('testCases', scopeId), next, current?.sha ?? null, commitMessage(scopeId, authorName, operation, 'testCases'))
+    return loadRemoteTestCases(scopeId)
+  })
+}
+
+export function saveRemoteTestCaseManifest(manifest: AnnotationManifest, authorName: string, scopeId: string) {
+  return saveManifest('testCases', manifest, authorName, scopeId)
 }
 
 export function loadRemoteFlows() {

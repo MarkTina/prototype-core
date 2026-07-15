@@ -1,0 +1,56 @@
+[
+  {
+    "id": "case-mobile-home-ready",
+    "screenId": "mobileHome",
+    "stateId": "ready",
+    "module": "移动端首页",
+    "testItem": "首页正常态展示",
+    "testPoint": "已准备数据时展示主要内容",
+    "preconditions": "进入移动端首页，原型状态为正常态",
+    "steps": [
+      "打开移动端首页",
+      "切换到正常态",
+      "观察页面主要内容"
+    ],
+    "expectedResult": "页面展示正常态内容，底部导航保持可用",
+    "actualResult": "未执行",
+    "authorName": "示例维护者",
+    "createdAt": "2026-07-15T00:00:00.000Z",
+    "updatedAt": "2026-07-15T00:00:00.000Z"
+  },
+  {
+    "id": "case-mobile-home-empty",
+    "screenId": "mobileHome",
+    "stateId": "empty",
+    "module": "移动端首页",
+    "testItem": "首页空状态展示",
+    "testPoint": "无业务数据时展示空状态",
+    "preconditions": "进入移动端首页，原型状态为空状态",
+    "steps": [
+      "打开移动端首页",
+      "切换到空状态"
+    ],
+    "expectedResult": "页面展示空状态，不残留正常态内容",
+    "actualResult": "未执行",
+    "authorName": "示例维护者",
+    "createdAt": "2026-07-15T00:00:00.000Z",
+    "updatedAt": "2026-07-15T00:00:00.000Z"
+  },
+  {
+    "id": "case-pc-dashboard-default",
+    "screenId": "pcDashboard",
+    "module": "PC 工作台",
+    "testItem": "工作台默认展示",
+    "testPoint": "无显式状态配置时仍可维护测试用例",
+    "preconditions": "进入 PC 工作台",
+    "steps": [
+      "打开 PC 工作台",
+      "观察工作台内容"
+    ],
+    "expectedResult": "工作台按默认状态展示",
+    "actualResult": "未执行",
+    "authorName": "示例维护者",
+    "createdAt": "2026-07-15T00:00:00.000Z",
+    "updatedAt": "2026-07-15T00:00:00.000Z"
+  }
+]

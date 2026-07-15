@@ -6,10 +6,12 @@ import TabBar from './components/phone/TabBar.vue'
 import PrototypeStateSwitcher from './components/phone/PrototypeStateSwitcher.vue'
 import FlowEditor from './components/flow-editor/FlowEditor.vue'
 import BugReportPage from './tools/bugs/BugReportPage.vue'
+import TestCaseWorkbench from './tools/test-cases/TestCaseWorkbench.vue'
 import PrototypeCoreHelpPage from './help/PrototypeCoreHelpPage.vue'
 import PrototypeCoreThemeGuidePage from './help/PrototypeCoreThemeGuidePage.vue'
 import { usePrototypeContext, useFlowEditorContext } from './prototype/usePrototype'
 import { useProductBugs } from './tools/bugs/useProductBugs'
+import { useTestCases } from './tools/test-cases/useTestCases'
 import type { DataSource, DisplayScreen, PrototypeAnnotation } from './types/prototype'
 import { getPrototypeRuntime } from './core/productAdapter'
 import { createVersionManifestUrl, normalizeVersionManifest, shouldNotifyVersion, type PrototypeVersionManifest } from './core/versionUpdate'
@@ -144,6 +146,7 @@ const {
 
 const { saveFlowsToSession, pushFlowsToGitee, exportFlows } = useFlowEditorContext()
 const { unresolvedBugCount, initializeBugs } = useProductBugs()
+const { initializeTestCases, refreshTestCases, sourceState: testCaseSourceState } = useTestCases()
 
 const tabBarItems = computed(() =>
   screens
@@ -170,11 +173,16 @@ const collaborationKindSummary = computed(() => {
   return [
     `注释 ${collaborationSourceNames[collaborationSources.value.annotations.source]}`,
     `页面描述 ${collaborationSourceNames[collaborationSources.value.pageDescriptions.source]}`,
+    `测试用例 ${collaborationSourceNames[collaborationSources.value.testCases.source]}`,
     `流程 ${collaborationSourceNames[collaborationSources.value.flows.source]}`,
   ].join(' · ')
 })
 const collaborationAllRemote = computed(() => Object.values(collaborationSources.value).every((state) => state.source === 'gitee'))
 const collaborationCardTitle = computed(() => collaborationBootstrapStatus.value === 'running' ? '正在初始化 Gitee' : collaborationSourceLabel.value)
+
+watch(testCaseSourceState, (state) => {
+  collaborationSources.value = { ...collaborationSources.value, testCases: { ...state } }
+}, { deep: true, immediate: true })
 
 const AUTH_STORAGE_KEY = 'prototype-core-authenticated'
 const PAGE_DESCRIPTION_SECTION_STORAGE_KEY = 'prototype-core-page-description-summary-sections'
@@ -414,6 +422,7 @@ function startAuthenticatedApp() {
   if (!prototypeInitialized.value) {
     void initializePrototype().then(startCollaborationPolling)
     void initializeBugs()
+    void initializeTestCases(annotationAuthorName.value.trim() || '初始化工具')
     prototypeInitialized.value = true
   }
   void checkLatestCoreVersion()
@@ -449,7 +458,7 @@ const gitHistory = __GIT_HISTORY__
 const showUpdateHistory = ref(false)
 const expandedHistoryHash = ref(gitHistory[0]?.hash ?? '')
 const latestUpdateTime = computed(() => gitHistory[0]?.date ?? '暂无记录')
-const appRoute = ref<'prototype' | 'bugs' | 'help' | 'themeGuide'>('prototype')
+const appRoute = ref<'prototype' | 'bugs' | 'testCases' | 'help' | 'themeGuide'>('prototype')
 const interactiveSideNavRef = ref<HTMLElement | null>(null)
 const interactiveSideNavCanScrollUp = ref(false)
 const interactiveSideNavCanScrollDown = ref(false)
@@ -1356,8 +1365,9 @@ function startCollaborationPolling() {
   stopCollaborationPolling()
   if (!annotationRemoteReady.value) return
   collaborationPollingTimer = window.setInterval(() => {
-    console.info('🔄 [协作同步] 开始轮询注释、页面描述和流程')
+    console.info('🔄 [协作同步] 开始轮询注释、页面描述、测试用例和流程')
     void refreshAllCollaborationData(true)
+    void refreshTestCases(true)
   }, annotationPollingIntervalSeconds.value * 1000)
 }
 
@@ -1512,6 +1522,7 @@ function dismissUpdatePrompt() {
 
 function syncAppRoute() {
   if (window.location.hash === '#/bugs') appRoute.value = 'bugs'
+  else if (window.location.hash === '#/test-cases') appRoute.value = 'testCases'
   else if (window.location.hash === '#/prototype-core-help') appRoute.value = 'help'
   else if (window.location.hash === '#/prototype-core-theme') appRoute.value = 'themeGuide'
   else appRoute.value = 'prototype'
@@ -1522,6 +1533,15 @@ function openBugPage() {
 }
 
 function closeBugPage() {
+  window.location.hash = '#/prototype'
+}
+
+function openTestCasePage() {
+  mobilePagePickerVisible.value = false
+  window.location.hash = '#/test-cases'
+}
+
+function closeTestCasePage() {
   window.location.hash = '#/prototype'
 }
 
@@ -1677,7 +1697,7 @@ onBeforeUnmount(() => {
     class="min-h-screen bg-canvas text-ink transition-[padding] duration-200"
     :class="[
       isMobilePureInteractive ? 'mobile-pure-interactive' : '',
-      appRoute === 'help' || appRoute === 'themeGuide' ? 'prototype-help-route' : presentationMode ? 'presentation-mode' : (!isMobilePureInteractive && (showUpdatePrompt ? 'has-update-banner pt-[120px]' : 'pt-[68px]')),
+      appRoute === 'help' || appRoute === 'themeGuide' ? 'prototype-help-route' : appRoute === 'testCases' ? 'test-cases-route' : presentationMode ? 'presentation-mode' : (!isMobilePureInteractive && (showUpdatePrompt ? 'has-update-banner pt-[120px]' : 'pt-[68px]')),
     ]"
     :style="themeStyle"
   >
@@ -1748,6 +1768,9 @@ onBeforeUnmount(() => {
         <button class="mode-btn top-level-mode-btn rounded-full bg-panel ring-1 ring-line" :class="{ active: showUpdateHistory }" @click="openUpdateHistory">更新历史</button>
         <button class="mode-btn top-level-mode-btn rounded-full bg-panel ring-1 ring-line" :class="{ active: showPrototypeHealthPanel }" @click="openPrototypeHealth">
           健康检查
+        </button>
+        <button class="mode-btn top-level-mode-btn rounded-full bg-panel ring-1 ring-line" :class="{ active: appRoute === 'testCases' }" @click="openTestCasePage">
+          测试用例
         </button>
         <button class="mode-btn bug-nav-btn rounded-full bg-panel ring-1 ring-line" :class="{ active: appRoute === 'bugs' }" @click="openBugPage">
           Bug
@@ -1882,7 +1905,16 @@ onBeforeUnmount(() => {
     </div>
     </div>
 
-    <BugReportPage v-if="appRoute === 'bugs' && !isMobilePureInteractive" @close="closeBugPage" />
+    <TestCaseWorkbench
+      v-if="appRoute === 'testCases'"
+      :lang="lang"
+      :current-screen-id="currentScreen"
+      :current-state-id="activePrototypeStateId"
+      :author-name="annotationAuthorName"
+      @update:author-name="annotationAuthorName = $event"
+      @close="closeTestCasePage"
+    />
+    <BugReportPage v-else-if="appRoute === 'bugs' && !isMobilePureInteractive" @close="closeBugPage" />
 
     <section
       v-if="appRoute === 'prototype'"
@@ -2734,7 +2766,10 @@ onBeforeUnmount(() => {
             <h2>快速切换页面</h2>
             <p>选择页面或页面状态，直接进入目标画面</p>
           </div>
-          <button type="button" @click="closeMobilePagePicker">关闭</button>
+          <div class="mobile-page-picker-head-actions">
+            <button type="button" @click="openTestCasePage">测试用例</button>
+            <button type="button" @click="closeMobilePagePicker">关闭</button>
+          </div>
         </header>
         <input v-model="mobilePagePickerQuery" class="mobile-page-picker-search" type="search" placeholder="搜索 P 编号、页面或状态" />
         <div class="mobile-page-picker-list">

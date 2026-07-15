@@ -111,7 +111,7 @@ export function readLegacyCollaborationCache<T>(kind: CollaborationDataKind | 'b
   }
 }
 
-export function readScopedCollaborationCache<T>(kind: 'annotations' | 'pageDescriptions'): ScopedCollaborationCacheSnapshot<T> {
+export function readScopedCollaborationCache<T>(kind: 'annotations' | 'pageDescriptions' | 'testCases'): ScopedCollaborationCacheSnapshot<T> {
   try {
     const value = JSON.parse(storage()?.getItem(cacheKey(kind)) ?? 'null') as ScopedCollaborationCacheSnapshot<T> | null
     if (value?.schemaVersion === CACHE_SCHEMA_VERSION && value.scopes && !('value' in value)) return value
@@ -121,14 +121,14 @@ export function readScopedCollaborationCache<T>(kind: 'annotations' | 'pageDescr
   return { schemaVersion: CACHE_SCHEMA_VERSION, scopes: {} }
 }
 
-export function replaceScopedCollaborationCache<T>(kind: 'annotations' | 'pageDescriptions', scopes: Record<string, CollaborationCacheEntry<T>>) {
+export function replaceScopedCollaborationCache<T>(kind: 'annotations' | 'pageDescriptions' | 'testCases', scopes: Record<string, CollaborationCacheEntry<T>>) {
   const snapshot: ScopedCollaborationCacheSnapshot<T> = { schemaVersion: CACHE_SCHEMA_VERSION, scopes }
   storage()?.setItem(cacheKey(kind), JSON.stringify(snapshot))
   return snapshot
 }
 
 export function writeScopedCollaborationCache<T>(
-  kind: 'annotations' | 'pageDescriptions',
+  kind: 'annotations' | 'pageDescriptions' | 'testCases',
   scopeId: string,
   value: T,
   revision: string | null,
@@ -149,7 +149,7 @@ export function writeScopedCollaborationCache<T>(
   return next.scopes[scopeId]
 }
 
-export function removeScopedCollaborationCache(kind: 'annotations' | 'pageDescriptions', scopeId: string) {
+export function removeScopedCollaborationCache(kind: 'annotations' | 'pageDescriptions' | 'testCases', scopeId: string) {
   const snapshot = withoutScopedCache(readScopedCollaborationCache(kind), scopeId)
   storage()?.setItem(cacheKey(kind), JSON.stringify(snapshot))
 }

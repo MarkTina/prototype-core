@@ -3,7 +3,7 @@ import type { Component } from 'vue'
 export type Mode = 'interactive' | 'overview' | 'flow'
 export type Lang = 'zh' | 'en'
 export type MainFlowId = string
-export type CollaborationDataKind = 'annotations' | 'pageDescriptions' | 'flows'
+export type CollaborationDataKind = 'annotations' | 'pageDescriptions' | 'testCases' | 'flows'
 export type DataSource = 'gitee' | 'local-cache' | 'local-seed'
 export type CollaborationSyncStatus = 'idle' | 'syncing' | 'success' | 'error' | 'conflict'
 export type CollaborationCacheStatus = 'synced' | 'pending' | 'stale' | 'error'
@@ -222,6 +222,22 @@ export interface PrototypePageDescription {
   updatedAt?: string
 }
 
+export interface PrototypeTestCase {
+  id: string
+  screenId: string
+  stateId?: string
+  module: string
+  testItem: string
+  testPoint: string
+  preconditions: string
+  steps: string[]
+  expectedResult: string
+  actualResult: string
+  authorName?: string
+  createdAt?: string
+  updatedAt?: string
+}
+
 export interface AnnotationDraft {
   screenId: string
   stateId?: string
@@ -233,16 +249,20 @@ export interface AnnotationDraft {
   color?: string
 }
 
-export interface AnnotationManifestScreen {
+export interface CollaborationManifestScreen {
   count: number
   updatedAt: string
   highlighted?: boolean
   highlightColor?: string
 }
 
-export interface AnnotationManifest {
+export interface CollaborationManifest {
   projectId: string
   updatedAt: string
-  scopes?: Record<string, AnnotationManifestScreen>
-  screens: Partial<Record<string, AnnotationManifestScreen>>
+  scopes?: Record<string, CollaborationManifestScreen>
+  screens: Partial<Record<string, CollaborationManifestScreen>>
 }
+
+// 保留旧名称，避免破坏已发布的公共类型引用。
+export type AnnotationManifestScreen = CollaborationManifestScreen
+export type AnnotationManifest = CollaborationManifest
