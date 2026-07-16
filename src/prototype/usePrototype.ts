@@ -35,6 +35,7 @@ import {
   writeScopedCollaborationCache,
 } from './collaborationStore'
 import { jsonValuesEqual, selectLocalFallback, shouldDeferRemoteRefresh } from './collaborationPolicy'
+import { annotationPositionFromClientPoint } from './annotationPosition'
 import { getPrototypeProduct, getPrototypeRuntime } from '../core/productAdapter'
 import { setActivePrototypeContext } from '../core/contextBridge'
 import EmptyPrototypeScreen from '../screens/EmptyPrototypeScreen.vue'
@@ -1255,11 +1256,12 @@ function handleAnnotationCanvasClick(event: MouseEvent, screenId: string) {
   const targetRect = target.getBoundingClientRect()
   const layerRect = layer?.getBoundingClientRect()
   const rect = layerRect && layerRect.width > 0 && layerRect.height > 0 ? layerRect : targetRect
+  const position = annotationPositionFromClientPoint(event.clientX, event.clientY, rect)
   annotationDraft.value = {
     screenId,
     stateId: normalizePrototypeStateId(screenId, activePrototypeStateId.value),
-    x: Math.round(((event.clientX - rect.left) / rect.width) * 1000) / 10,
-    y: Math.round(((event.clientY - rect.top) / rect.height) * 1000) / 10,
+    x: Math.round(position.x * 10) / 10,
+    y: Math.round(position.y * 10) / 10,
     featureName: '',
     featureDescription: '',
     specialNote: '',

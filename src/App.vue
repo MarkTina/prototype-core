@@ -15,6 +15,7 @@ import { useTestCases } from './tools/test-cases/useTestCases'
 import type { DataSource, DisplayScreen, PrototypeAnnotation } from './types/prototype'
 import { getPrototypeProduct, getPrototypeRuntime, type PrototypeUpdateHistoryItem } from './core/productAdapter'
 import { createVersionManifestUrl, normalizeVersionManifest, shouldNotifyVersion, type PrototypeVersionManifest } from './core/versionUpdate'
+import { annotationPositionFromClientPoint, clampAnnotationPosition } from './prototype/annotationPosition'
 
 const {
   themeColorFields,
@@ -710,9 +711,7 @@ function computeAnnotationPositionFromClientPoint(clientX: number, clientY: numb
   const layer = getAnnotationLayer(content)
   const layerRect = layer?.getBoundingClientRect()
   const rect = layerRect && layerRect.width > 0 && layerRect.height > 0 ? layerRect : contentRect
-  const x = ((clientX - rect.left) / rect.width) * 100
-  const y = ((clientY - rect.top) / rect.height) * 100
-  return { x: Math.min(96, Math.max(4, x)), y: Math.min(96, Math.max(4, y)) }
+  return clampAnnotationPosition(annotationPositionFromClientPoint(clientX, clientY, rect))
 }
 
 function handleAnnotationPointPointerDown(annotation: PrototypeAnnotation, event: PointerEvent) {

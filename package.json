@@ -35,7 +35,7 @@
   "scripts": {
     "dev": "pnpm --dir examples/basic dev",
     "check:architecture": "node scripts/check-architecture.mjs",
-    "test": "node --experimental-strip-types --test tests/collaborationPolicy.test.ts tests/versionUpdate.test.ts tests/testCases.test.ts",
+    "test": "node --experimental-strip-types --test tests/annotationPosition.test.ts tests/collaborationPolicy.test.ts tests/versionUpdate.test.ts tests/testCases.test.ts",
     "build:core": "vite build",
     "build:example": "pnpm --dir examples/basic build",
     "build": "pnpm check:architecture && pnpm test && pnpm build:core && pnpm build:example",
