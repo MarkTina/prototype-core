@@ -18,18 +18,18 @@
 
 ## 当前现状与限制
 
-- 内核与移动端/PC 最小示例均可构建，现有自动化测试为 12 项。
+- 内核与移动端/PC 最小示例均可构建，现有自动化测试为 20 项。
 - 包可生成 `.tgz`，包含 ESM、声明文件和完整 CSS，不包含产品文件或源仓库配置。
 - 顶部导航展示当前内核包版本，并在应用启动后从 npm `latest` 查询最新版本；查询失败只降级显示，不影响原型主流程。
 - 业务升级通知通过 `runtimeConfig.versionUpdate` 显式注册消费者构建版本；内核在启动、定时轮询和页面恢复可见时读取 `version.json`，并用 `BroadcastChannel` 加速同源窗口通知。未注册时完全关闭检测；消费者必须保证页面版本与清单版本来自同一次构建，并最后发布无缓存的 `version.json`。
 - 数据源面板可检查 Gitee、OSS、部署、原型访问和 Bug 删除密码共 20 项配置；只展示变量名与存在状态，不读取或显示敏感值。
 - Gitee 与 OSS 配置已改为运行时注入；这些浏览器端能力只适用于原型，不构成生产级秘密保护。
-- npm 公共发布已可用；当前 latest 为 `@marktowin/prototype-core@1.2.7`。Trusted Publisher 必须与 `MarkTina/prototype-core` 和 `publish.yml` 精确绑定；本地 Token 发布需显式关闭 provenance。
+- npm 公共发布已可用；当前 latest 为 `@marktowin/prototype-core@1.2.10`。Trusted Publisher 必须与 `MarkTina/prototype-core` 和 `publish.yml` 精确绑定；本地 Token 发布需显式关闭 provenance。
 - 页面描述支持 `highlighted` 与可选 `highlightColor` 重点标注；导航和状态页切换以名称前的彩色书签展示，旧数据默认使用红色。自定义颜色列表按项目缓存在浏览器本地。
 - 移动端演示模式保持 `393×852` 基准画布并按视口整体等比缩放，不会因演示尺寸变化触发业务页面响应式重排。
 - 添加注释点时，页面内所有内容统一使用十字光标，点击交互组件只创建标注并阻止其业务操作；取消添加后恢复正常交互。
 - 注释点支持可选 `color` 字段；新增和编辑弹窗可选择颜色，旧数据无颜色时继续使用主题主色。
-- 注释点新增与长按拖动统一以 `.annotation-layer` 的可视矩形换算坐标，避免 PC 缩放和长页面滚动时混用布局像素造成漂移；长按激活后圆点中心立即吸附按下位置。
+- 注释点新增与长按拖动统一以 `.annotation-layer` 的可视矩形换算坐标，避免容器内边距、PC 缩放和长页面滚动造成漂移；长按激活后圆点中心立即吸附按下位置，并由原点偏移和缩放场景的自动化测试守护。
 - 主题面板已从配色切换升级为主题切换：以 `DESIGN.md` 为事实来源、`DESIGN-TOKENS.md` 为实现索引，运行时新增 `--ds-*` 颜色、字体、圆角、间距和阴影变量；旧 `--color-*` 与旧版主题 JSON 继续兼容；`#/prototype-core-theme` 提供公开主题准则页，入口在主题切换弹层。
 - Gitee 协作路径、scope、缓存和写入动作均由内核通用契约约束；消费者标识和资源只能通过产品定义与 `runtimeConfig` 注入，不进入内核文档或源码。
 - 协作缓存使用 schema v3：页面描述、注释与测试用例按 scope 保存独立 revision，流程与 Bug 按整文件保存，并区分 `synced/pending/stale/error`；旧 v2 缓存会保守迁移为 `stale`。
@@ -103,7 +103,7 @@
 
 <!-- fresh-meta
 last-updated: 2026-07-16
-trigger-reason: 合并产品文档、更新历史与测试用例工作台能力
+trigger-reason: 发布 1.2.10 并补充注释拖动坐标回归测试
 updated-by: handoff-maintainer
-next-review: 当测试用例或更新历史接入首个真实消费者时
+next-review: 当注释坐标协议或画布缩放实现变化时
 -->
