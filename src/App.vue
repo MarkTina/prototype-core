@@ -92,7 +92,8 @@ const {
   activeScreenHighlightedStateColors,
   hoveredAnnotation,
   initializePrototype,
-  t,
+  coreText,
+  productText,
   selectTheme,
   updateCustomThemeColor,
   updateCustomThemeDesignColor,
@@ -479,8 +480,8 @@ let interactionModeToastTimer: ReturnType<typeof window.setTimeout> | undefined
 let productDocumentToastTimer: ReturnType<typeof window.setTimeout> | undefined
 
 const productDocument = product.document
-const productDocumentTitle = computed(() => productDocument?.title.trim() || t('prototypeTitle'))
-const productDocumentDescription = computed(() => productDocument?.description.trim() || t('prototypeSubtitle'))
+const productDocumentTitle = computed(() => productDocument?.title.trim() || productText('prototypeTitle', '产品原型'))
+const productDocumentDescription = computed(() => productDocument?.description.trim() || productText('prototypeSubtitle', '产品原型说明'))
 
 function openProductDocument() {
   const url = productDocument?.url?.trim()
@@ -1974,7 +1975,7 @@ onBeforeUnmount(() => {
             <p><b>核心功能：</b>{{ pageDescriptionSummary.features }}</p>
           </button>
         </div>
-        <p v-else>{{ t('heroCopy') }}</p>
+        <p v-else>{{ productText('heroCopy', currentMeta.subtitle) }}</p>
       </section>
 
       <div class="flex flex-col gap-6 lg:flex-row">
@@ -2136,7 +2137,7 @@ onBeforeUnmount(() => {
               >
                 <PrototypeStateSwitcher
                   v-if="effectiveMode === 'interactive' && !isMobilePureInteractive && screen.platform === 'mobile' && prototypeStateOptions.length && activePrototypeStateId"
-                  :title="t('prototypeStateSwitch')"
+                  :title="coreText('prototypeStateSwitch')"
                   :options="prototypeStateOptions"
                   :active-id="activePrototypeStateId"
                   :count-for-state="(stateId) => annotationCountByState(currentScreen, stateId)"
@@ -2223,65 +2224,65 @@ onBeforeUnmount(() => {
       :class="{ collapsed: annotationPanelCollapsed, 'description-view-mode': activeCollaborationTab === 'pageDescription' }"
     >
       <button class="annotation-panel-tab" type="button" @click="annotationPanelCollapsed = !annotationPanelCollapsed">
-        {{ annotationPanelCollapsed ? t('annotationExpand') : t('annotationCollapse') }}
+        {{ annotationPanelCollapsed ? coreText('annotationExpand') : coreText('annotationCollapse') }}
       </button>
       <template v-if="!annotationPanelCollapsed">
         <div class="annotation-panel-head">
           <div>
-            <p>{{ t('annotationPanelTitle') }}</p>
-            <span>{{ t('annotationPanelSubtitle') }} · {{ currentMeta.code }}<template v-if="currentPrototypeStateLabel"> · {{ currentPrototypeStateLabel }}</template></span>
+            <p>{{ coreText('annotationPanelTitle') }}</p>
+            <span>{{ coreText('annotationPanelSubtitle') }} · {{ currentMeta.code }}<template v-if="currentPrototypeStateLabel"> · {{ currentPrototypeStateLabel }}</template></span>
           </div>
           <strong>{{ activeCollaborationTab === 'annotations' ? currentScreenAnnotations.length : currentPageDescription ? 1 : 0 }}</strong>
         </div>
         <div class="annotation-panel-tabs">
           <button type="button" :class="{ active: activeCollaborationTab === 'annotations' }" @click="activeCollaborationTab = 'annotations'">
-            {{ t('annotationTabNotes') }}
+            {{ coreText('annotationTabNotes') }}
           </button>
           <button type="button" :class="{ active: activeCollaborationTab === 'pageDescription' }" @click="activeCollaborationTab = 'pageDescription'; cancelAnnotationDraft()">
-            {{ t('annotationTabDescription') }}
+            {{ coreText('annotationTabDescription') }}
           </button>
         </div>
         <div v-if="activeCollaborationTab === 'annotations'" class="annotation-panel-actions">
           <button type="button" :class="{ active: isPlacingAnnotation }" @click="startAnnotationPlacement">
-            {{ isPlacingAnnotation ? t('annotationCancelAdd') : t('annotationAdd') }}
+            {{ isPlacingAnnotation ? coreText('annotationCancelAdd') : coreText('annotationAdd') }}
           </button>
           <button type="button" @click="annotationPointsVisible = !annotationPointsVisible">
-            {{ annotationPointsVisible ? t('annotationHidePoints') : t('annotationShowPoints') }}
+            {{ annotationPointsVisible ? coreText('annotationHidePoints') : coreText('annotationShowPoints') }}
           </button>
           <button type="button" :disabled="annotationSyncStatus === 'syncing'" @click="refreshPrototypeAnnotations()">
-            {{ t('annotationRefresh') }}
+            {{ coreText('annotationRefresh') }}
           </button>
-          <button type="button" @click="exportAnnotations">{{ t('annotationExport') }}</button>
+          <button type="button" @click="exportAnnotations">{{ coreText('annotationExport') }}</button>
         </div>
         <div v-else class="annotation-panel-actions description-actions">
           <button type="button" :disabled="annotationSyncStatus === 'syncing'" @click="refreshPageDescriptions()">
-            {{ t('annotationRefresh') }}
+            {{ coreText('annotationRefresh') }}
           </button>
-          <button type="button" @click="exportPageDescriptions">{{ t('pageDescriptionExport') }}</button>
+          <button type="button" @click="exportPageDescriptions">{{ coreText('pageDescriptionExport') }}</button>
           <button type="button" :class="{ active: pageDescriptionEditing }" @click="startPageDescriptionEdit">
             {{ currentPageDescription ? '编辑' : '新增' }}
           </button>
         </div>
         <div class="annotation-sync-row" :class="`is-${annotationSyncStatus}`">
-          <span>{{ annotationRemoteReady ? annotationSyncLabel : t('annotationRemoteDisabled') }}</span>
+          <span>{{ annotationRemoteReady ? annotationSyncLabel : coreText('annotationRemoteDisabled') }}</span>
         </div>
         <label class="annotation-author-field">
-          <span>{{ t('annotationAuthorName') }}</span>
-          <input v-model="annotationAuthorName" type="text" :placeholder="t('annotationAuthorPlaceholder')" />
+          <span>{{ coreText('annotationAuthorName') }}</span>
+          <input v-model="annotationAuthorName" type="text" :placeholder="coreText('annotationAuthorPlaceholder')" />
         </label>
         <label class="annotation-polling-field">
-          <span>{{ t('annotationPollingInterval') }}</span>
+          <span>{{ coreText('annotationPollingInterval') }}</span>
           <div class="annotation-polling-control">
             <input v-model.number="annotationPollingIntervalInput" min="10" max="300" step="5" type="number" />
-            <small>{{ t('annotationPollingUnit') }}</small>
+            <small>{{ coreText('annotationPollingUnit') }}</small>
             <button type="button" :disabled="Number(annotationPollingIntervalInput) === annotationPollingIntervalSeconds" @click="saveAnnotationPollingInterval">
-              {{ t('annotationPollingSave') }}
+              {{ coreText('annotationPollingSave') }}
             </button>
           </div>
         </label>
         <p v-if="annotationPollingNotice" class="annotation-polling-notice">{{ annotationPollingNotice }}</p>
         <div v-if="activeCollaborationTab === 'annotations'" class="annotation-list">
-          <p v-if="!currentScreenAnnotations.length" class="annotation-empty">{{ t('annotationEmpty') }}</p>
+          <p v-if="!currentScreenAnnotations.length" class="annotation-empty">{{ coreText('annotationEmpty') }}</p>
           <section v-for="(annotation, index) in currentScreenAnnotations" :key="annotation.id" @mouseenter="handleAnnotationListMouseEnter(annotation)" @mouseleave="scheduleHideAnnotationPopover">
             <span>{{ index + 1 }}</span>
             <div>
@@ -2292,7 +2293,7 @@ onBeforeUnmount(() => {
             </div>
             <div class="annotation-list-actions">
               <button class="annotation-list-edit" type="button" @click="openAnnotationDialog(annotation.id)">
-                {{ t('editProfile') }}
+                {{ coreText('editProfile') }}
               </button>
               <button
                 class="annotation-list-delete annotation-delete-btn"
@@ -2301,13 +2302,13 @@ onBeforeUnmount(() => {
                 :title="!annotationAuthorName.trim() ? '请先输入昵称以删除注释' : ''"
                 @click="removeAnnotation(annotation.id)"
               >
-                {{ t('annotationDelete') }}
+                {{ coreText('annotationDelete') }}
               </button>
             </div>
           </section>
         </div>
         <div v-else class="page-description-view">
-          <p v-if="!currentPageDescription" class="annotation-empty">{{ t('pageDescriptionEmpty') }}</p>
+          <p v-if="!currentPageDescription" class="annotation-empty">{{ coreText('pageDescriptionEmpty') }}</p>
           <template v-else>
             <small v-if="currentPageDescriptionUpdatedLabel" class="page-description-meta">{{ currentPageDescriptionUpdatedLabel }}</small>
             <section v-for="section in pageDescriptionSummarySections" :key="section.id">
@@ -2418,7 +2419,7 @@ onBeforeUnmount(() => {
           <button type="button" aria-label="关闭页面描述编辑" @click="cancelPageDescriptionEdit">×</button>
         </div>
         <form class="page-description-form" @submit.prevent="handlePageDescriptionSave">
-          <p v-if="!currentPageDescription" class="annotation-empty">{{ t('pageDescriptionEmpty') }}</p>
+          <p v-if="!currentPageDescription" class="annotation-empty">{{ coreText('pageDescriptionEmpty') }}</p>
           <small v-else-if="currentPageDescriptionUpdatedLabel" class="page-description-meta">{{ currentPageDescriptionUpdatedLabel }}</small>
           <div class="page-description-editor-source-row">
             <div class="page-description-source-switcher" aria-label="切换编辑数据源">
@@ -2462,20 +2463,20 @@ onBeforeUnmount(() => {
               <small v-if="customHighlightColorNotice">{{ customHighlightColorNotice }}</small>
             </section>
             <label>
-              <span>{{ t('pageDescriptionPurpose') }}</span>
-              <textarea v-model="pageDescriptionEditor.purpose" :placeholder="t('pageDescriptionPurposePlaceholder')" />
+              <span>{{ coreText('pageDescriptionPurpose') }}</span>
+              <textarea v-model="pageDescriptionEditor.purpose" :placeholder="coreText('pageDescriptionPurposePlaceholder')" />
             </label>
             <label>
-              <span>{{ t('pageDescriptionStructure') }}</span>
-              <textarea v-model="pageDescriptionEditor.structure" :placeholder="t('pageDescriptionStructurePlaceholder')" />
+              <span>{{ coreText('pageDescriptionStructure') }}</span>
+              <textarea v-model="pageDescriptionEditor.structure" :placeholder="coreText('pageDescriptionStructurePlaceholder')" />
             </label>
             <label>
-              <span>{{ t('pageDescriptionFeatures') }}</span>
-              <textarea v-model="pageDescriptionEditor.features" :placeholder="t('pageDescriptionFeaturesPlaceholder')" />
+              <span>{{ coreText('pageDescriptionFeatures') }}</span>
+              <textarea v-model="pageDescriptionEditor.features" :placeholder="coreText('pageDescriptionFeaturesPlaceholder')" />
             </label>
             <label>
-              <span>{{ t('pageDescriptionFlowPosition') }}</span>
-              <textarea v-model="pageDescriptionEditor.flowPosition" :placeholder="t('pageDescriptionFlowPlaceholder')" />
+              <span>{{ coreText('pageDescriptionFlowPosition') }}</span>
+              <textarea v-model="pageDescriptionEditor.flowPosition" :placeholder="coreText('pageDescriptionFlowPlaceholder')" />
             </label>
             <label>
               <span>交互规则</span>
@@ -2495,12 +2496,12 @@ onBeforeUnmount(() => {
             </label>
             <label>
               <span>补充说明</span>
-              <textarea v-model="pageDescriptionEditor.developmentNotes" :placeholder="t('pageDescriptionDevelopmentPlaceholder')" />
+              <textarea v-model="pageDescriptionEditor.developmentNotes" :placeholder="coreText('pageDescriptionDevelopmentPlaceholder')" />
             </label>
           </fieldset>
           <small v-if="pageDescriptionActionNotice" class="page-description-action-notice">{{ pageDescriptionActionNotice }}</small>
           <div class="page-description-form-actions" :class="{ 'has-three-actions': pageDescriptionSelectedSource === 'local-cache' }">
-            <button type="button" @click="cancelPageDescriptionEdit">{{ t('annotationCancel') }}</button>
+            <button type="button" @click="cancelPageDescriptionEdit">{{ coreText('annotationCancel') }}</button>
             <button v-if="pageDescriptionSelectedSource === 'gitee'" type="submit" :disabled="annotationSyncStatus === 'syncing' || !collaborationContext.remoteWritable">保存到 Gitee</button>
             <button v-if="pageDescriptionSelectedSource === 'local-cache'" type="button" @click="handlePageDescriptionCacheSave">保存缓存</button>
             <button
@@ -2531,7 +2532,7 @@ onBeforeUnmount(() => {
           :title="!annotationAuthorName.trim() ? '请先输入昵称以删除注释' : ''"
           @click="removeAnnotation(hoveredAnnotation.id)"
         >
-          {{ t('annotationDelete') }}
+          {{ coreText('annotationDelete') }}
         </button>
       </div>
       <p>{{ hoveredAnnotation.featureDescription }}</p>
@@ -2539,18 +2540,18 @@ onBeforeUnmount(() => {
     </div>
     <div v-if="appRoute === 'prototype' && annotationDraft && !isMobilePureInteractive" class="annotation-form-backdrop">
       <form class="annotation-form" @submit.prevent="saveAnnotationDraft">
-        <h3>{{ t('annotationFormTitle') }}</h3>
+        <h3>{{ coreText('annotationFormTitle') }}</h3>
         <label>
-          <span>{{ t('annotationFeatureName') }}</span>
-          <input v-model="annotationDraft.featureName" type="text" :placeholder="t('annotationNamePlaceholder')" />
+          <span>{{ coreText('annotationFeatureName') }}</span>
+          <input v-model="annotationDraft.featureName" type="text" :placeholder="coreText('annotationNamePlaceholder')" />
         </label>
         <label>
-          <span>{{ t('annotationFeatureDescription') }}</span>
-          <textarea v-model="annotationDraft.featureDescription" :placeholder="t('annotationDescPlaceholder')" />
+          <span>{{ coreText('annotationFeatureDescription') }}</span>
+          <textarea v-model="annotationDraft.featureDescription" :placeholder="coreText('annotationDescPlaceholder')" />
         </label>
         <label>
-          <span>{{ t('annotationSpecialNote') }}</span>
-          <textarea v-model="annotationDraft.specialNote" :placeholder="t('annotationNotePlaceholder')" />
+          <span>{{ coreText('annotationSpecialNote') }}</span>
+          <textarea v-model="annotationDraft.specialNote" :placeholder="coreText('annotationNotePlaceholder')" />
         </label>
         <section class="annotation-color-field">
           <span>注释点颜色</span>
@@ -2573,33 +2574,33 @@ onBeforeUnmount(() => {
           <small v-if="customAnnotationColorNotice">{{ customAnnotationColorNotice }}</small>
         </section>
         <label>
-          <span>{{ t('annotationAuthorName') }}</span>
-          <input v-model="annotationAuthorName" type="text" :placeholder="t('annotationAuthorPlaceholder')" />
+          <span>{{ coreText('annotationAuthorName') }}</span>
+          <input v-model="annotationAuthorName" type="text" :placeholder="coreText('annotationAuthorPlaceholder')" />
         </label>
         <div class="annotation-form-actions">
-          <button type="button" @click="cancelAnnotationDraft">{{ t('annotationCancel') }}</button>
+          <button type="button" @click="cancelAnnotationDraft">{{ coreText('annotationCancel') }}</button>
           <button
             type="submit"
             :disabled="!annotationDraft.featureName.trim() || !annotationDraft.featureDescription.trim() || !annotationDraft.specialNote.trim() || !annotationAuthorName.trim()"
           >
-            {{ t('annotationSave') }}
+            {{ coreText('annotationSave') }}
           </button>
         </div>
       </form>
     </div>
     <div v-if="appRoute === 'prototype' && activeAnnotation && !isMobilePureInteractive" class="annotation-form-backdrop">
       <form class="annotation-form" @submit.prevent="saveAnnotationEdit">
-        <h3>{{ annotationDialogMode === 'edit' ? t('annotationEditTitle') : t('annotationDetailTitle') }}</h3>
+        <h3>{{ annotationDialogMode === 'edit' ? coreText('annotationEditTitle') : coreText('annotationDetailTitle') }}</h3>
         <label>
-          <span>{{ t('annotationFeatureName') }}</span>
+          <span>{{ coreText('annotationFeatureName') }}</span>
           <input v-model="annotationEditor.featureName" type="text" :readonly="annotationDialogMode === 'view'" />
         </label>
         <label>
-          <span>{{ t('annotationFeatureDescription') }}</span>
+          <span>{{ coreText('annotationFeatureDescription') }}</span>
           <textarea v-model="annotationEditor.featureDescription" :readonly="annotationDialogMode === 'view'" />
         </label>
         <label>
-          <span>{{ t('annotationSpecialNote') }}</span>
+          <span>{{ coreText('annotationSpecialNote') }}</span>
           <textarea v-model="annotationEditor.specialNote" :readonly="annotationDialogMode === 'view'" />
         </label>
         <section v-if="annotationDialogMode === 'edit'" class="annotation-color-field">
@@ -2623,17 +2624,17 @@ onBeforeUnmount(() => {
           <small v-if="customAnnotationColorNotice">{{ customAnnotationColorNotice }}</small>
         </section>
         <label v-if="annotationDialogMode === 'edit'">
-          <span>{{ t('annotationAuthorName') }}</span>
-          <input v-model="annotationAuthorName" type="text" :placeholder="t('annotationAuthorPlaceholder')" />
+          <span>{{ coreText('annotationAuthorName') }}</span>
+          <input v-model="annotationAuthorName" type="text" :placeholder="coreText('annotationAuthorPlaceholder')" />
         </label>
         <div class="annotation-form-actions" :class="{ single: annotationDialogMode === 'view' }">
-          <button type="button" @click="closeAnnotationDialog">{{ annotationDialogMode === 'edit' ? t('annotationCancel') : t('close') }}</button>
+          <button type="button" @click="closeAnnotationDialog">{{ annotationDialogMode === 'edit' ? coreText('annotationCancel') : coreText('close') }}</button>
           <button
             v-if="annotationDialogMode === 'edit'"
             type="submit"
             :disabled="!annotationEditor.featureName.trim() || !annotationEditor.featureDescription.trim() || !annotationEditor.specialNote.trim() || !annotationAuthorName.trim()"
           >
-            {{ t('annotationSave') }}
+            {{ coreText('annotationSave') }}
           </button>
         </div>
       </form>

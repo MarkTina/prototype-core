@@ -23,6 +23,8 @@ void mountPrototypeApp({
 
 完整接入方式见 `examples/basic`。默认关闭访问认证并使用本地协作模式；需要云端协作时通过 `runtimeConfig` 显式注入配置。
 
+语言切换只作用于消费者业务 UI 和业务状态文案。消费者继续在 `product.copy.zh/en` 中维护业务文案；注释、页面描述、协作状态、数据源和测试工具等内核界面固定显示中文，消费者不需要也不应配置内核文案。
+
 应用可通过顶部“测试用例”或固定路由 `#/test-cases` 打开工作台。测试用例按页面/状态 scope 管理：有状态页面使用 `<screenId>__<stateId>`，无状态页面使用 `<screenId>`。消费者可在 `public/test-cases.json` 提供数组种子，也可直接使用工作台导出的 `{ version, testCases }`；启用 Gitee 后，远端 `test-cases/<scopeId>.json` 和 `test-cases/manifest.json` 是协作真值。工作台支持整体导出 JSON 和带筛选、冻结表头的 `.xlsx`，导出不代表已写入消费者种子或 Gitee。
 
 人或 AI 在消费者项目中执行接入、新建页面、状态、流程、页面描述、协作配置与验收时，统一参照 [消费者原型实施操作手册](https://github.com/MarkTina/prototype-core/blob/main/AI-PROTOTYPE-GUIDE.md) 的“触发词 → 标准动作 → 完成判定”流程。

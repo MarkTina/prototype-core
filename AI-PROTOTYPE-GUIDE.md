@@ -340,6 +340,7 @@ export const product: PrototypeProductDefinition = {
 
 - `states[screenId]` 中的状态 ID。
 - `copy.zh` 与 `copy.en` 对应 `labelKey`。
+- `copy.zh/en` 只维护消费者业务文案；注释、页面描述、协作状态、数据源和测试工具等内核文案固定为中文，不得复制到消费者配置中。
 - 页面组件根据 `activePrototypeStateId` 呈现该状态。
 - 流程需要时引用同一 `stateId`。
 - 状态级页面描述使用相同 scope。

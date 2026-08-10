@@ -5,6 +5,7 @@ const coreEntries = [
   'src/App.vue',
   'src/core',
   'src/components',
+  'src/i18n',
   'src/prototype',
   'src/screens',
   'src/tools',

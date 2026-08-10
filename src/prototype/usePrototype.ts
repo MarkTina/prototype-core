@@ -38,6 +38,7 @@ import { jsonValuesEqual, selectLocalFallback, shouldDeferRemoteRefresh } from '
 import { annotationPositionFromClientPoint } from './annotationPosition'
 import { getPrototypeProduct, getPrototypeRuntime } from '../core/productAdapter'
 import { setActivePrototypeContext } from '../core/contextBridge'
+import { coreText, readProductText } from '../i18n/coreCopy'
 import EmptyPrototypeScreen from '../screens/EmptyPrototypeScreen.vue'
 import type {
   AnnotationDraft,
@@ -450,8 +451,8 @@ function setCollaborationEditing(kind: CollaborationDataKind, editing: boolean) 
   collaborationEditing.value = { ...collaborationEditing.value, [kind]: editing }
 }
 
-function t(key: keyof typeof copy.zh | string) {
-  return (copy[lang.value] as Record<string, string>)[key] ?? key
+function productText(key: string, fallback = key) {
+  return readProductText(copy, lang.value, key, fallback)
 }
 
 function isHexColor(value: string) {
@@ -631,7 +632,7 @@ const flowScreens = computed<DisplayScreen[]>(() =>
   ) ?? [],
 )
 function getPrototypeStateOptions(screenId: string): PrototypeStateOption[] {
-  return (states[screenId] ?? []).map((state) => ({ id: state.id, label: t(state.labelKey) }))
+  return (states[screenId] ?? []).map((state) => ({ id: state.id, label: productText(state.labelKey, state.id) }))
 }
 
 function getPrototypeStateLabel(screenId: string, stateId: string) {
@@ -1869,7 +1870,8 @@ export function usePrototypeContext() {
     activeScopeHighlighted,
     hoveredAnnotation,
     initializePrototype,
-    t,
+    coreText,
+    productText,
     selectTheme,
     updateCustomThemeColor,
     updateCustomThemeDesignColor,

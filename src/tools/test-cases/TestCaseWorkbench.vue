@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ArrowDown, ArrowLeft, ArrowUp, FileJson, FileSpreadsheet, Plus, RefreshCw, Search, Trash2, X } from '@lucide/vue'
 import { getPrototypeProduct } from '../../core/productAdapter'
+import { coreText } from '../../i18n/coreCopy'
 import type { Lang, PrototypeTestCase } from '../../types/prototype'
 import { emptyTestCaseDraft, testCaseScopeId, validateTestCaseDraft, type TestCaseDraft, type TestCaseScope } from './model'
 import { exportTestCasesExcel, exportTestCasesJson } from './exportTestCases'
@@ -33,19 +34,39 @@ const {
   setTestCaseEditing,
 } = useTestCases()
 
-const copy = computed(() => props.lang === 'zh' ? {
-  title: '测试用例', subtitle: '按页面状态维护可执行、可追溯的测试场景', back: '返回原型', searchScope: '搜索页面或状态',
-  current: '当前状态', all: '全部用例', searchCase: '搜索 7 个业务字段', add: '新增用例', empty: '当前范围暂无测试用例',
-  edit: '编辑用例', create: '新增用例', save: '保存用例', cancel: '取消', author: '协作者昵称', module: '所属模块',
-  item: '测试项', point: '测试要点', preconditions: '前置条件', steps: '测试步骤', expected: '预期结果', actual: '实际结果',
-  json: '导出 JSON', excel: '导出 Excel', refresh: '刷新', delete: '删除', addStep: '新增步骤', close: '关闭编辑器', moveUp: '上移步骤', moveDown: '下移步骤', removeStep: '删除步骤', unknown: '未知页面或状态',
-} : {
-  title: 'Test Cases', subtitle: 'Maintain executable, traceable scenarios by page state', back: 'Back to prototype', searchScope: 'Search pages or states',
-  current: 'Current state', all: 'All cases', searchCase: 'Search all 7 fields', add: 'New case', empty: 'No test cases in this scope',
-  edit: 'Edit case', create: 'New case', save: 'Save case', cancel: 'Cancel', author: 'Collaborator', module: 'Module',
-  item: 'Test item', point: 'Test point', preconditions: 'Preconditions', steps: 'Steps', expected: 'Expected result', actual: 'Actual result',
-  json: 'Export JSON', excel: 'Export Excel', refresh: 'Refresh', delete: 'Delete', addStep: 'Add step', close: 'Close editor', moveUp: 'Move step up', moveDown: 'Move step down', removeStep: 'Remove step', unknown: 'Unknown page or state',
-})
+const copy = {
+  title: coreText('testCaseTitle'),
+  subtitle: coreText('testCaseSubtitle'),
+  back: coreText('testCaseBack'),
+  searchScope: coreText('testCaseSearchScope'),
+  current: coreText('testCaseCurrent'),
+  all: coreText('testCaseAll'),
+  searchCase: coreText('testCaseSearchCase'),
+  add: coreText('testCaseAdd'),
+  empty: coreText('testCaseEmpty'),
+  edit: coreText('testCaseEdit'),
+  create: coreText('testCaseCreate'),
+  save: coreText('testCaseSave'),
+  cancel: coreText('testCaseCancel'),
+  author: coreText('testCaseAuthor'),
+  module: coreText('testCaseModule'),
+  item: coreText('testCaseItem'),
+  point: coreText('testCasePoint'),
+  preconditions: coreText('testCasePreconditions'),
+  steps: coreText('testCaseSteps'),
+  expected: coreText('testCaseExpected'),
+  actual: coreText('testCaseActual'),
+  json: coreText('testCaseJson'),
+  excel: coreText('testCaseExcel'),
+  refresh: coreText('testCaseRefresh'),
+  delete: coreText('testCaseDelete'),
+  addStep: coreText('testCaseAddStep'),
+  close: coreText('testCaseClose'),
+  moveUp: coreText('testCaseMoveUp'),
+  moveDown: coreText('testCaseMoveDown'),
+  removeStep: coreText('testCaseRemoveStep'),
+  unknown: coreText('testCaseUnknown'),
+}
 
 const scopeQuery = ref('')
 const caseQuery = ref('')
