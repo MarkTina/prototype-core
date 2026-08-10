@@ -315,13 +315,27 @@ export const product: PrototypeProductDefinition = {
 
 用户确认后再实施；纯文案、颜色或已确定样式的局部修正可直接修改。
 
+#### 6.2.1 手机画布与消费者容器边界
+
+内核负责手机外框、状态栏、滚动容器和 TabBar 预留空间，消费者负责手机画布内的业务页面。实现移动端页面前必须先检查当前安装版本的内核样式，确认 `.screen-content` 已提供的横向、顶部和底部留白；不得在业务页面根节点机械重复同等 padding。当前默认手机预览内容区已有 `20px` 横向留白，实际值仍以消费者安装版本为准。
+
+- 页面背景需要覆盖完整业务画布时，把背景设置在页面根节点，并确保根节点至少覆盖可用高度；不要只给内部内容块着色，形成四周或底部断层。
+- 需要全幅背景、全幅标题或贴边分区时，只在一个共享页面根类中统一抵消内核留白，并在交互、全图、流程和演示模式中验证；不要让每个页面分别硬编码负边距。
+- 需要保留画布留白时，卡片、标题和表单只增加业务层间距；先检查父级，再决定是否增加子级 padding，禁止层层叠加导致组件宽度被挤压。
+- 背景颜色不同的相邻区域必须选择一种清晰关系：全幅分区使用 `--ds-rounded-none` 并铺满边界；内嵌卡片与画布保持明确间距，并使用统一的 `--ds-rounded-*` 圆角。不得让异色矩形直接贴住手机边框，也不得只处理上圆角或下圆角。
+- 同一产品中重复出现的普通标题、返回标题、状态摘要等结构应封装为消费者公共组件；标题、返回热区、边距、圆角和深浅色变体从同一处维护。
+- TabBar 由内核渲染时不得在业务页面重复实现。必须按实际 Tab 数量检查等宽分栏、选中态和点击热区；项目 Tab 数量与内核当前布局不匹配时，应明确记录为内核兼容问题，不通过压缩业务内容掩盖。
+- 颜色、圆角、间距和阴影优先使用 `--ds-*` token。触控目标不小于 `44 × 44px`，并在 `393 × 852` 基准画布及至少 `375px` 宽度检查溢出、滚动、固定底栏和键盘遮挡。
+
 ### 6.3 编写业务组件
 
 - 页面只实现业务内容，不复制手机外框、顶部模式栏、协作面板等内核 UI。
 - 页内弹窗、输入、展开、加载等使用普通 Vue 状态。
 - 跨页面、Tab 和评审状态切换使用内核上下文。
-- 页面组件会收到 `screen` 属性；需要元数据时显式声明 prop。
+- 页面组件会收到响应式 `screen: DisplayScreen` 属性；状态页面必须显式声明该 prop，并以 `screen.stateId` 渲染当前页面实例。
 - 保持消费者现有组件库、尺寸体系和样式约定，不顺手重构其他页面。
+- 定时器、`requestAnimationFrame`、音频、Canvas 绘制任务和设备监听必须在重新开始前先清理，并在 `onBeforeUnmount` 中释放；不得假设状态切换后组件实例仍然存在。
+- 状态评审数据与真实业务数据分离。状态按钮用于展示空、失败、加载等评审结果时，不得写入真实缓存、最近记录、导入草稿或正式报告；真实业务动作只在明确的确认点写入。
 
 ### 6.4 注册页面
 
@@ -341,9 +355,64 @@ export const product: PrototypeProductDefinition = {
 - `states[screenId]` 中的状态 ID。
 - `copy.zh` 与 `copy.en` 对应 `labelKey`。
 - `copy.zh/en` 只维护消费者业务文案；注释、页面描述、协作状态、数据源和测试工具等内核文案固定为中文，不得复制到消费者配置中。
-- 页面组件根据 `activePrototypeStateId` 呈现该状态。
+- 页面组件根据传入实例的 `screen.stateId` 呈现该状态；不得把 `activePrototypeStateId` 作为页面内容的首要展示来源。
 - 流程需要时引用同一 `stateId`。
 - 状态级页面描述使用相同 scope。
+
+#### 6.5.1 `screen.stateId` 与 `activePrototypeStateId`
+
+两者用途不同：
+
+| 值 | 含义 | 正确用途 |
+| --- | --- | --- |
+| `screen.stateId` | 当前这一张 `DisplayScreen` 页面实例要展示的状态 | 消费者页面模板、计算属性、状态数据选择和状态级 UI |
+| `activePrototypeStateId` | 当前交互页面在内核中的活动状态 | 没有 `screen` prop 的外围控制、当前协作 scope 或主动状态控制 |
+
+交互模式通常只渲染当前页面，因此两个值看起来可能相同；全图模式会同时为同一页面生成多张不同 `stateId` 的卡片，流程模式也会按节点传入各自状态。此时如果业务组件读取全局 `activePrototypeStateId`，多张卡片会错误地显示成同一个状态。
+
+状态页面使用以下模式：
+
+```vue
+<script setup lang="ts">
+import { computed } from 'vue'
+import { usePrototypeContext } from '@marktowin/prototype-core'
+import type { DisplayScreen } from '@marktowin/prototype-core'
+
+const props = defineProps<{ screen: DisplayScreen }>()
+const { setPrototypeState } = usePrototypeContext()
+
+const stateId = computed(() => props.screen.stateId ?? 'ready')
+const isEmpty = computed(() => stateId.value === 'empty')
+
+function showEmptyState() {
+  setPrototypeState(props.screen.id, 'empty')
+}
+</script>
+
+<template>
+  <p v-if="isEmpty">暂无数据</p>
+  <p v-else>正常内容</p>
+  <button type="button" @click="showEmptyState">显示空状态</button>
+</template>
+```
+
+禁止以下实现：
+
+- 只在 `setup` 初始化时执行 `ref(props.screen.stateId === 'empty')`，后续状态切换不会自动同步。
+- 仅在 `mode === 'overview'` 时读取 `screen.stateId`，导致交互模式的状态按钮只改变标签、不改变页面内容。
+- 页面内容优先读取 Store，只有 Store 为空时才读取状态 ID，导致“空状态”仍显示真实数据。
+- 为了展示评审状态而修改真实业务 Store、`localStorage` 或 `sessionStorage`。
+
+当状态需要演示数据时，为各状态提供只读预览数据；非运行态的评审展示由当前页面实例的 `screen.stateId` 决定。真实业务流程可以通过显式的 `runtimeDriven`（或同义状态）暂时展示 Store 中的实时结果，但手动切换评审状态时必须退出运行态并恢复为 `screen.stateId` 驱动，不能让 Store 静默覆盖状态选择器。编辑、删除和确认操作必须明确区分“预览数据”与“真实草稿”。
+
+#### 6.5.2 状态切换与长任务生命周期
+
+内核当前使用包含 `screen.id` 和 `screen.stateId` 的 key 渲染页面实例。调用 `setPrototypeState` 后，消费者页面可能被卸载并重新创建；组件内的计时器、采样进度、Canvas 动画和局部 ref 不会自动延续。
+
+- 纯展示状态可以直接调用 `setPrototypeState`。
+- 采集、上传、轮询、倒计时等运行中阶段，如果任务依赖组件本地计时器，不要在每个中间阶段调用 `setPrototypeState`；先用页内 Vue 状态推进，任务结束并清理资源后再同步终态或跳转。
+- 如果评审面板必须实时反映“进行中”状态，应把任务、时间基准和可恢复进度移到组件外的 Store 或独立 composable；组件重建后从外部状态恢复，而不是依赖旧实例继续运行。
+- 页面离开、手动切换评审状态或重新测试时，必须停止旧任务。Canvas 不可用或绘制失败时，文字状态和业务判定仍应保留。
 
 ### 6.6 实现跳转
 
@@ -351,7 +420,7 @@ export const product: PrototypeProductDefinition = {
 <script setup lang="ts">
 import { usePrototypeContext } from '@marktowin/prototype-core'
 
-const { activePrototypeStateId, go, goTab, setPrototypeState } = usePrototypeContext()
+const { go, goTab, setPrototypeState } = usePrototypeContext()
 
 // go('detail')：跳转到已注册页面
 // goTab('home')：按 Tab 语义切换到已注册页面
@@ -363,6 +432,7 @@ const { activePrototypeStateId, go, goTab, setPrototypeState } = usePrototypeCon
 - `go` 与 `goTab` 只接收已注册 ID。
 - 当前不是 Vue Router，不假设 URL、历史栈、参数、守卫或文件路由。
 - 流程节点不会自动生成点击逻辑；页面事件与流程数据必须分别实现并保持一致。
+- `go/goTab` 修改当前页面，但不应被当作“自动退出全图/流程模式”的承诺。业务按钮以交互模式为主要运行环境；如果产品明确要求从其他模式触发业务跳转，应先显式切回 `interactive`，并回归状态面板、页面导航和业务按钮的点击层级。
 
 ### 6.7 补入流程
 
@@ -398,15 +468,18 @@ const { activePrototypeStateId, go, goTab, setPrototypeState } = usePrototypeCon
 - 页面/状态描述已补全。
 - 交互、全图、流程模式均可展示。
 - 移动端/PC 尺寸、滚动、遮挡和交互已回归。
+- 每个状态切换后，手机内容、状态文案、按钮可用性和演示数据同步变化，而不只是状态按钮的选中样式变化。
+- 页面根背景铺满预期画布，未出现重复内边距、异色直角贴边、局部背景断层或 TabBar 非等宽布局。
+- 长任务可从开始推进到终态；状态切换、重新开始和页面离开后没有残留计时器、绘制任务或设备监听。
 - 相关协作资源已按任务要求完成本地与远端验证。
 
 ## 7. 核心操作规范
 
 ### 7.1 新增或修改状态
 
-标准动作：确认状态语义 → 注册 ID → 补双语标签 → 实现页面展示 → 更新跳转/流程 → 补状态描述 → 回归连续切换。
+标准动作：确认状态语义 → 注册 ID → 补双语标签 → 使用 `screen.stateId` 实现响应式展示 → 隔离预览与真实数据 → 更新跳转/流程 → 补状态描述 → 回归连续切换和组件重建。
 
-禁止：只在组件中写字符串状态、只改 UI 不注册、复用含义不同的旧状态 ID。
+禁止：只在组件中写字符串状态、只改 UI 不注册、复用含义不同的旧状态 ID、只改变状态按钮选中态而不改变页面内容、用评审状态覆盖真实业务缓存。
 
 ### 7.2 删除页面或状态
 
@@ -676,11 +749,13 @@ const runtimeConfig: PrototypeRuntimeConfig = {
 
 ### 11.3 运行时回归
 
-- 交互模式：点击、输入、弹窗、跳转、Tab、状态切换。
-- 全图模式：所有页面和状态可见，缩放与布局正常。
-- 流程模式：节点、顺序、分支与页面实现一致。
+- 交互模式：点击、输入、弹窗、跳转、Tab、状态切换；逐个状态确认页面内容确实变化，不能只看状态按钮是否选中。
+- 全图模式：所有页面和状态可见，每张卡片按自身 `screen.stateId` 独立渲染，缩放与布局正常。
+- 流程模式：节点、顺序、分支与页面实现一致；同一页面的不同流程状态不得显示成同一内容。
 - 批注模式：任意位置可落点，交互组件不会抢占标注点击。
 - 演示模式：移动端保持基准比例整体缩放。
+- 动态任务：采集、上传、轮询、倒计时和 Canvas 动画能完整到达终态；重新开始、切换状态和离开页面后旧任务停止。
+- 移动端视觉：在基准画布和窄屏检查根背景、有效内容宽度、滚动、键盘、固定底栏、圆角过渡和触控热区；展开的内核面板不得遮挡状态按钮或页面导航。
 - 协作工具：注释、页面描述、测试用例和流程的读、写、冲突、失败降级和轮询行为符合预期。
 
 ### 11.4 远端精确验证
@@ -719,7 +794,10 @@ Git 状态：未提交 / 已提交 / 已推送
 - [ ] 页面清单、状态清单和流程清单来自真实需求。
 - [ ] 每个页面有唯一 ID、正确端型和组件注册。
 - [ ] 页面状态、双语文案、流程节点和跳转调用完全一致。
+- [ ] 状态页面以响应式 `screen.stateId` 渲染；全图和流程中的同页多状态可以同时显示不同内容。
 - [ ] 页面 UI 方案已确认，页内与跨页交互均实现。
+- [ ] 页面根背景、有效内容宽度、内边距、圆角和 TabBar 分栏已在基准画布及窄屏验证。
+- [ ] 状态预览不污染真实缓存；长任务在组件重建、重新开始和页面离开后可以正确继续或清理。
 - [ ] 页面/状态描述与真实实现一致。
 - [ ] 测试用例按页面/状态 scope 维护，远端真值和整体导出范围已核对。
 - [ ] 本地种子、缓存和 Gitee 真值的状态已区分报告。

@@ -15,6 +15,7 @@
 - npm 包只发布编译后的 `dist`，Vue 与 Lucide 保持 peer dependencies。
 - 版本遵循 SemVer；标签触发 npmjs 公共发布和 GitHub Release，安装端不需要 Token。
 - 公开安全优先于迁移便利，任何真实环境值和历史凭据都不得进入仓库。
+- 消费者状态页面以每个 `DisplayScreen` 实例的 `screen.stateId` 渲染；`activePrototypeStateId` 不作为全图或流程卡片的展示来源。状态切换可能重建组件，长任务必须外置或在终态再同步。
 
 ## 当前现状与限制
 
@@ -38,6 +39,7 @@
 - 交互模式与页面描述编辑弹窗可按当前 scope 切换查看 Gitee、本地缓存和静态 JSON；JSON 保持只读，本地缓存可独立编辑，缓存或 JSON 可在确认目标路径后推送 Gitee 并精确回读 scope 与 manifest。待推送缓存不会被轮询覆盖；JSON 不作为启用远端协作后的第二真值。
 - 页面描述 JSON 由 AI 修改后，也可通过浏览器命令或 `prototype-core-sync-page-descriptions` 终端命令执行批量差异同步；支持指定 Scope、逐项成功/跳过/失败结果和 Gitee 错误正文。
 - `AI-PROTOTYPE-GUIDE.md` 是消费者原型实施操作手册，以触发词路由接入、页面、状态、跳转、流程、协作配置、升级和验收，并为每项操作定义固定动作与完成判定。
+- 消费者手册已补齐手机画布容器边界、公共标题与圆角、TabBar 分栏、`screen.stateId` 状态契约、预览数据隔离及计时/Canvas 生命周期验收规则。
 - 内核提供公开的 `#/prototype-core-help` 路由和顶部紧凑文档图标，构建时内嵌操作手册 Markdown，供人或 AI 直接读取和复制，不依赖消费者认证或静态文件部署。
 - 顶部产品文档标题、描述和地址由消费者通过 `PrototypeProductDefinition.document` 注入；未配置地址时按钮只提示配置路径，不再打开内核硬编码链接。版本区明确标注“内核当前/内核最新”。
 - 更新历史由消费者构建时读取自身 Git `HEAD` 并通过 `PrototypeProductDefinition.updateHistory` 注入；内核不再固化自身提交。未接入与已接入但无记录使用不同空状态。
@@ -112,7 +114,7 @@
 
 <!-- fresh-meta
 last-updated: 2026-08-10
-trigger-reason: 发布 1.2.11 并明确内核与消费者文案职责边界
+trigger-reason: 修正消费者状态渲染来源并补齐 UI 与长任务生命周期规范
 updated-by: handoff-maintainer
-next-review: 当内核新增工具文案或消费者翻译接口变化时
+next-review: 当 DisplayScreen、状态切换重建策略或手机内容区布局变化时
 -->
