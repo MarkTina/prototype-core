@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { collaborationBranchKey, collaborationCacheKey, createSerialQueue, jsonValuesEqual, remoteInitializationDecision, selectGiteeFileResponse, selectLocalFallback, shouldDeferRemoteRefresh, upsertScopedCache, withoutScopedCache } from '../src/prototype/collaborationPolicy.ts'
-import { assertUniqueBugIds, nextBugId } from '../src/tools/bugs/bugPolicy.ts'
+import { assertUniqueBugIds, bugIdExists, nextBugId, normalizeBugId } from '../src/tools/bugs/bugPolicy.ts'
 
 test('主分支使用稳定目录，功能分支不会互相碰撞', () => {
   assert.equal(collaborationBranchKey('main'), 'main')
@@ -86,4 +86,12 @@ test('Bug 编号始终根据最新远端集合继续递增', () => {
 test('Bug 写入策略拒绝大小写不同的重复 ID', () => {
   assert.doesNotThrow(() => assertUniqueBugIds([{ id: 'BUG-001' }, { id: 'BUG-002' }]))
   assert.throws(() => assertUniqueBugIds([{ id: 'BUG-001' }, { id: 'bug-001' }]), /重复 Bug ID/)
+})
+
+test('Bug ID 编辑只排除当前记录并统一大小写与空格', () => {
+  const current = [{ id: 'BUG-001' }, { id: 'BUG-001' }, { id: 'BUG-002' }]
+  assert.equal(normalizeBugId(' bug-003 '), 'BUG-003')
+  assert.equal(bugIdExists(current, 'BUG-001', 0), true)
+  assert.equal(bugIdExists(current, ' bug-003 ', 0), false)
+  assert.equal(bugIdExists(current, 'bug-002', 0), true)
 })

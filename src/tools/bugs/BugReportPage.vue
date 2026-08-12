@@ -6,6 +6,7 @@ import { getPrototypeRuntime } from '../../core/productAdapter'
 import { getCollaborationContext } from '../../prototype/collaborationStore'
 import { collaborationCacheKey } from '../../prototype/collaborationPolicy'
 import { ossPreviewUrl, ossUploadEnabled, uploadImageToOss } from './ossClient'
+import { bugIdExists, normalizeBugId } from './bugPolicy'
 import type { BugOwnerRole, BugSeverity, BugSourceSide, BugStatus, BugType, ProductBug, ProductBugAttachment } from './types'
 
 const emit = defineEmits<{
@@ -130,7 +131,15 @@ const submitForm = reactive<BugSubmissionForm>({
 const submissionId = ref(createSubmissionId())
 const uploadedSubmitAttachments = ref<ProductBugAttachment[]>([])
 const submitError = ref('')
-const selectedBugId = ref('')
+interface BugLocator {
+  id: string
+  createdAt: string
+  title: string
+  reporterName: string
+  occurrence: number
+}
+
+const selectedBugLocator = ref<BugLocator | null>(null)
 const filters = reactive({
   type: '全部' as BugType | '全部',
   severity: '全部' as BugSeverity | '全部',
@@ -156,6 +165,7 @@ const isConfirmingDelete = ref(false)
 const deleteSecret = ref('')
 const isEditingBug = ref(false)
 const editForm = reactive({
+  id: '',
   title: '',
   type: '功能异常' as BugType,
   severity: 'P2' as BugSeverity,
@@ -275,8 +285,42 @@ if (restoredSubmissionDraft) {
 watch(submitForm, saveSubmissionDraft, { deep: true })
 watch(uploadedSubmitAttachments, saveSubmissionDraft, { deep: true })
 
-const selectedBug = computed(() => bugs.value.find((bug) => bug.id === selectedBugId.value) ?? null)
+function hasSameBugIdentity(bug: ProductBug, locator: Omit<BugLocator, 'occurrence'>) {
+  return bug.id === locator.id
+    && bug.createdAt === locator.createdAt
+    && bug.title === locator.title
+    && bug.reporterName === locator.reporterName
+}
+
+function createBugLocator(bug: ProductBug, current = bugs.value): BugLocator {
+  const base = { id: bug.id, createdAt: bug.createdAt, title: bug.title, reporterName: bug.reporterName }
+  const matches = current.filter((item) => hasSameBugIdentity(item, base))
+  return { ...base, occurrence: Math.max(0, matches.indexOf(bug)) }
+}
+
+function findBugIndex(current: ProductBug[], locator: BugLocator | null) {
+  if (!locator) return -1
+  const matches = current
+    .map((bug, index) => ({ bug, index }))
+    .filter(({ bug }) => hasSameBugIdentity(bug, locator))
+  return matches[locator.occurrence]?.index ?? -1
+}
+
+function bugRowKey(bug: ProductBug) {
+  const locator = createBugLocator(bug)
+  return [locator.id, locator.createdAt, locator.title, locator.reporterName, locator.occurrence].join(':')
+}
+
+const selectedBug = computed(() => {
+  const index = findBugIndex(bugs.value, selectedBugLocator.value)
+  return index >= 0 ? bugs.value[index] : null
+})
+const selectedBugHasDuplicateId = computed(() => {
+  const bug = selectedBug.value
+  return Boolean(bug && bugs.value.filter((item) => normalizeBugId(item.id) === normalizeBugId(bug.id)).length > 1)
+})
 const selectedBugEditable = computed(() => Boolean(selectedBug.value && !['已验证', '无需处理'].includes(selectedBug.value.status)))
+const canStartBugEdit = computed(() => selectedBugEditable.value || selectedBugHasDuplicateId.value)
 const fixedCount = computed(() => bugs.value.filter((bug) => bug.status === '已修复' || bug.status === '已验证').length)
 const closedCount = computed(() => bugs.value.filter((bug) => bug.status === '无需处理').length)
 const sourceSideVersionSuggestions = computed(() =>
@@ -488,11 +532,10 @@ async function submitBug() {
     }
   }
 
-  let committedBugId = ''
+  let committedBugLocator: BugLocator | null = null
   const saved = await persistBugs(reporterName, '新增 Bug', (current) => {
     const now = new Date().toISOString()
     const assignedBugId = generateNextBugId(current)
-    committedBugId = assignedBugId
     const nextBug: ProductBug = {
       id: assignedBugId,
       title,
@@ -509,6 +552,7 @@ async function submitBug() {
       attachments,
       history: [],
     }
+    committedBugLocator = createBugLocator(nextBug, [nextBug, ...current])
     return [nextBug, ...current]
   })
   if (!saved) {
@@ -528,7 +572,7 @@ async function submitBug() {
   submitForm.title = ''
   submitForm.sourceSideVersion = sourceSideVersion
   submitForm.description = ''
-  selectedBugId.value = committedBugId
+  selectedBugLocator.value = committedBugLocator
 }
 
 onBeforeUnmount(() => {
@@ -538,7 +582,7 @@ onBeforeUnmount(() => {
 
 function openBug(bug: ProductBug) {
   const defaultUserName = readDefaultUserName()
-  selectedBugId.value = bug.id
+  selectedBugLocator.value = createBugLocator(bug)
   isEditingBug.value = false
   editError.value = ''
   deleteError.value = ''
@@ -555,7 +599,7 @@ function openBug(bug: ProductBug) {
 }
 
 function closeDetail() {
-  selectedBugId.value = ''
+  selectedBugLocator.value = null
   isEditingBug.value = false
   editError.value = ''
   deleteError.value = ''
@@ -568,10 +612,11 @@ function closeDetail() {
 
 function startBugEdit() {
   const bug = selectedBug.value
-  if (!bug || !selectedBugEditable.value) return
+  if (!bug || !canStartBugEdit.value) return
   isConfirmingDelete.value = false
   deleteError.value = ''
   deleteSecret.value = ''
+  editForm.id = bug.id
   editForm.title = bug.title
   editForm.type = bug.type
   editForm.severity = bug.severity
@@ -613,27 +658,35 @@ function cancelDeleteBug() {
 
 async function deleteBug() {
   const bug = selectedBug.value
-  if (!bug) return
+  const locator = selectedBugLocator.value
+  if (!bug || !locator) return
   if (!deleteBugCode || deleteSecret.value.trim() !== deleteBugCode) {
     deleteError.value = '密钥不正确'
     return
   }
 
   const operatorName = statusForm.operatorName.trim() || readDefaultUserName() || '管理员'
-  const saved = await persistBugs(operatorName, `删除 Bug ${bug.id}`, (current) => current.filter((item) => item.id !== bug.id))
+  const saved = await persistBugs(operatorName, `删除 Bug ${bug.id}`, (current) => {
+    const targetIndex = findBugIndex(current, locator)
+    if (targetIndex < 0) throw new Error('目标 Bug 已变化，请刷新后重试')
+    return current.filter((_, index) => index !== targetIndex)
+  })
+  if (!saved) deleteError.value = bugSyncMessage.value || 'Bug 删除失败'
   if (!saved) return
   closeDetail()
 }
 
 async function saveBugEdit() {
   const bug = selectedBug.value
-  if (!bug || !selectedBugEditable.value) return
+  const locator = selectedBugLocator.value
+  if (!bug || !locator || !canStartBugEdit.value) return
+  const id = editForm.id.trim()
   const title = editForm.title.trim()
   const description = editForm.description.trim()
   const sourceSideVersion = editForm.sourceSideVersion.trim()
   const operatorName = statusForm.operatorName.trim() || readDefaultUserName() || bug.reporterName
-  if (!title || !description) {
-    editError.value = '请填写标题和问题描述'
+  if (!id || !title || !description) {
+    editError.value = '请填写 Bug ID、标题和问题描述'
     return
   }
 
@@ -649,25 +702,32 @@ async function saveBugEdit() {
   }
 
   const now = new Date().toISOString()
-  const saved = await persistBugs(operatorName, '编辑 Bug 内容', (current) =>
-    current.map((item) =>
-      item.id === bug.id
+  const saved = await persistBugs(operatorName, '编辑 Bug 内容', (current) => {
+    const targetIndex = findBugIndex(current, locator)
+    if (targetIndex < 0) throw new Error('目标 Bug 已变化，请刷新后重试')
+    if (bugIdExists(current, id, targetIndex)) throw new Error(`Bug ID ${id} 已存在，请改为唯一 ID`)
+    return current.map((item, index) =>
+      index === targetIndex
         ? {
             ...item,
-            title,
-            type: editForm.type,
-            severity: editForm.severity,
-            sourceSide: editForm.sourceSide,
-            sourceSideVersion: sourceSideVersion || undefined,
-            ownerRole: editForm.ownerRole,
-            description,
-            attachments: nextAttachments,
+            id,
+            title: selectedBugEditable.value ? title : item.title,
+            type: selectedBugEditable.value ? editForm.type : item.type,
+            severity: selectedBugEditable.value ? editForm.severity : item.severity,
+            sourceSide: selectedBugEditable.value ? editForm.sourceSide : item.sourceSide,
+            sourceSideVersion: selectedBugEditable.value ? sourceSideVersion || undefined : item.sourceSideVersion,
+            ownerRole: selectedBugEditable.value ? editForm.ownerRole : item.ownerRole,
+            description: selectedBugEditable.value ? description : item.description,
+            attachments: selectedBugEditable.value ? nextAttachments : item.attachments,
             updatedAt: now,
           }
         : item,
-    ),
-  )
-  if (!saved) return
+    )
+  })
+  if (!saved) {
+    editError.value = bugSyncMessage.value || 'Bug 修改失败'
+    return
+  }
   // 保存成功后关闭详情抽屉，让用户明确感知提交已完成
   closeDetail()
 }
@@ -675,7 +735,8 @@ async function saveBugEdit() {
 async function updateBugStatus() {
   statusError.value = ''
   const bug = selectedBug.value
-  if (!bug) return
+  const locator = selectedBugLocator.value
+  if (!bug || !locator) return
   const operatorName = statusForm.operatorName.trim()
   const fixerName = statusForm.fixerName.trim()
   if (!operatorName) {
@@ -698,9 +759,11 @@ async function updateBugStatus() {
     createdAt: now,
   }
 
-  const saved = await persistBugs(operatorName, '变更 Bug 状态', (current) =>
-    current.map((item) =>
-      item.id === bug.id
+  const saved = await persistBugs(operatorName, '变更 Bug 状态', (current) => {
+    const targetIndex = findBugIndex(current, locator)
+    if (targetIndex < 0) throw new Error('目标 Bug 已变化，请刷新后重试')
+    return current.map((item, index) =>
+      index === targetIndex
         ? {
             ...item,
             status: statusForm.status,
@@ -709,9 +772,12 @@ async function updateBugStatus() {
             history: [nextHistory, ...item.history],
           }
         : item,
-    ),
-  )
-  if (!saved) return
+    )
+  })
+  if (!saved) {
+    statusError.value = bugSyncMessage.value || 'Bug 状态修改失败'
+    return
+  }
   saveDefaultUserName(fixerName || operatorName)
   statusForm.operatorName = readDefaultUserName()
   statusForm.note = ''
@@ -902,7 +968,7 @@ async function updateBugStatus() {
 
         <div class="bug-list">
           <p v-if="!filteredBugs.length" class="bug-empty">当前筛选条件下暂无 Bug。</p>
-          <article v-for="bug in paginatedBugs" :key="bug.id" class="bug-list-item" :class="`is-${statusTone[bug.status]}`">
+          <article v-for="bug in paginatedBugs" :key="bugRowKey(bug)" class="bug-list-item" :class="`is-${statusTone[bug.status]}`">
             <div class="bug-list-main">
               <div class="bug-list-meta">
                 <b>#{{ bug.id }}</b>
@@ -957,8 +1023,8 @@ async function updateBugStatus() {
         </div>
         <div class="bug-detail-actions">
           <div>
-            <button v-if="selectedBugEditable && !isEditingBug" class="bug-edit-entry-btn" type="button" @click="startBugEdit">编辑 Bug</button>
-            <span v-else-if="!selectedBugEditable">已完结 Bug 不支持编辑</span>
+            <button v-if="canStartBugEdit && !isEditingBug" class="bug-edit-entry-btn" type="button" @click="startBugEdit">编辑 Bug</button>
+            <span v-else-if="!canStartBugEdit">已完结 Bug 不支持编辑</span>
           </div>
           <button v-if="!isEditingBug" class="bug-delete-entry-btn" type="button" @click="startDeleteBug">
             <Trash2 class="h-4 w-4" />
@@ -982,49 +1048,54 @@ async function updateBugStatus() {
         </form>
         <form v-if="isEditingBug" class="bug-edit-form" @submit.prevent="saveBugEdit" @paste="handlePaste">
           <label>
+            <span>Bug ID</span>
+            <input v-model="editForm.id" type="text" autocomplete="off" />
+            <small v-if="selectedBugHasDuplicateId" class="bug-id-warning">此 ID 与另一条 Bug 重复，请改为唯一值</small>
+          </label>
+          <label>
             <span>标题</span>
-            <input v-model="editForm.title" type="text" />
+            <input v-model="editForm.title" type="text" :disabled="!selectedBugEditable" />
           </label>
           <div class="bug-form-row">
             <label>
               <span>类型</span>
-              <select v-model="editForm.type">
+              <select v-model="editForm.type" :disabled="!selectedBugEditable">
                 <option v-for="type in bugTypes" :key="type" :value="type">{{ type }}</option>
               </select>
             </label>
             <label>
               <span>等级</span>
-              <select v-model="editForm.severity">
+              <select v-model="editForm.severity" :disabled="!selectedBugEditable">
                 <option v-for="severity in bugSeverities" :key="severity" :value="severity">{{ severity }}</option>
               </select>
             </label>
             <label>
               <span>发生侧</span>
-              <select v-model="editForm.sourceSide">
+              <select v-model="editForm.sourceSide" :disabled="!selectedBugEditable">
                 <option v-for="side in bugSourceSides" :key="side" :value="side">{{ side }}</option>
               </select>
             </label>
             <label>
               <span>发生侧版本</span>
-              <input v-model="editForm.sourceSideVersion" type="text" list="bug-source-side-version-options" placeholder="如 iOS 1.2.3 / 后端 2026.06" />
+              <input v-model="editForm.sourceSideVersion" type="text" list="bug-source-side-version-options" placeholder="如 iOS 1.2.3 / 后端 2026.06" :disabled="!selectedBugEditable" />
             </label>
             <label>
               <span>归属</span>
-              <select v-model="editForm.ownerRole">
+              <select v-model="editForm.ownerRole" :disabled="!selectedBugEditable">
                 <option v-for="role in bugOwnerRoles" :key="role" :value="role">{{ role }}</option>
               </select>
             </label>
           </div>
           <label>
             <span>问题描述</span>
-            <textarea v-model="editForm.description" />
+            <textarea v-model="editForm.description" :disabled="!selectedBugEditable" />
           </label>
           <section class="bug-edit-images">
             <div class="bug-section-title">
               <ImagePlus class="h-4 w-4" />
               <span>问题截图</span>
             </div>
-            <button class="bug-image-picker" type="button" :disabled="pendingImages.length + editAttachments.length >= MAX_PENDING_IMAGES" @click="imageInputRef?.click()">
+            <button class="bug-image-picker" type="button" :disabled="!selectedBugEditable || pendingImages.length + editAttachments.length >= MAX_PENDING_IMAGES" @click="imageInputRef?.click()">
               添加图片 / 粘贴截图
             </button>
             <div v-if="editAttachments.length" class="bug-edit-existing-images">
@@ -1036,7 +1107,7 @@ async function updateBugStatus() {
                   <b>{{ attachment.name }}</b>
                   <span>{{ formatFileSize(attachment.size) }}</span>
                 </div>
-                <button type="button" aria-label="删除图片" @click="removeEditAttachment(attachment.id)">
+                <button type="button" aria-label="删除图片" :disabled="!selectedBugEditable" @click="removeEditAttachment(attachment.id)">
                   <Trash2 class="h-4 w-4" />
                 </button>
               </article>

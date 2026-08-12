@@ -2,7 +2,7 @@ import { computed, ref } from 'vue'
 import { bugRemoteEnabled, loadRemoteBugs, updateRemoteBugs } from './bugClient'
 import { migrateFileCollaborationCache, readCollaborationCache, writeCollaborationCache } from '../../prototype/collaborationStore'
 import { CollaborationConflictError } from '../../prototype/annotationClient'
-import { assertUniqueBugIds, nextBugId } from './bugPolicy'
+import { nextBugId } from './bugPolicy'
 import type { BugOwnerRole, BugSeverity, BugSourceSide, BugStatus, BugType, ProductBug, ProductBugAttachment } from './types'
 
 export const bugTypes: BugType[] = ['功能异常', 'UI/文案', '流程阻塞', '数据/报告', '设备/蓝牙', '性能/稳定性', '兼容性', '其他']
@@ -147,10 +147,7 @@ async function initializeBugs() {
 async function persistBugs(operatorName: string, operation: string, transform: (current: ProductBug[]) => ProductBug[]) {
   const applyTransform = (current: ProductBug[]) => {
     const normalizedCurrent = normalizeBugs(current)
-    assertUniqueBugIds(normalizedCurrent)
-    const next = normalizeBugs(transform(normalizedCurrent))
-    assertUniqueBugIds(next)
-    return next
+    return normalizeBugs(transform(normalizedCurrent))
   }
   const applyLocal = () => {
     bugs.value = applyTransform(bugs.value)

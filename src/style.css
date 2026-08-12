@@ -888,6 +888,10 @@
     @apply text-xs font-semibold text-muted;
   }
 
+  .bug-id-warning {
+    @apply text-xs font-medium text-warning;
+  }
+
   .bug-edit-form input,
   .bug-edit-form select,
   .bug-edit-form textarea {
