@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { collaborationBranchKey, collaborationCacheKey, createSerialQueue, jsonValuesEqual, remoteInitializationDecision, selectGiteeFileResponse, selectLocalFallback, shouldDeferRemoteRefresh, upsertScopedCache, withoutScopedCache } from '../src/prototype/collaborationPolicy.ts'
+import { assertUniqueBugIds, nextBugId } from '../src/tools/bugs/bugPolicy.ts'
 
 test('主分支使用稳定目录，功能分支不会互相碰撞', () => {
   assert.equal(collaborationBranchKey('main'), 'main')
@@ -73,4 +74,16 @@ test('按 Gitee 官方 Content 数组结构解析文件与缺失状态', () => {
   assert.equal(selectGiteeFileResponse([], 'a/b.json'), null)
   assert.deepEqual(selectGiteeFileResponse([{ type: 'file', path: 'a/b.json', content: 'e30=', sha: 'abc' }], 'a/b.json'), { type: 'file', path: 'a/b.json', content: 'e30=', sha: 'abc' })
   assert.equal(selectGiteeFileResponse([{ type: 'dir', path: 'a', name: 'a' }], 'a/b.json'), null)
+})
+
+test('Bug 编号始终根据最新远端集合继续递增', () => {
+  const initial = [{ id: 'BUG-007' }]
+  const firstId = nextBugId(initial)
+  assert.equal(firstId, 'BUG-008')
+  assert.equal(nextBugId([...initial, { id: firstId }]), 'BUG-009')
+})
+
+test('Bug 写入策略拒绝大小写不同的重复 ID', () => {
+  assert.doesNotThrow(() => assertUniqueBugIds([{ id: 'BUG-001' }, { id: 'BUG-002' }]))
+  assert.throws(() => assertUniqueBugIds([{ id: 'BUG-001' }, { id: 'bug-001' }]), /重复 Bug ID/)
 })

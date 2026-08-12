@@ -1,5 +1,6 @@
 import { createSerialQueue, selectGiteeFileResponse } from '../../prototype/collaborationPolicy'
 import { getCollaborationContext } from '../../prototype/collaborationStore'
+import { CollaborationConflictError } from '../../prototype/annotationClient'
 import type { ProductBug } from './types'
 
 export interface BugRemotePayload<T> {
@@ -96,7 +97,7 @@ async function writeGiteeFile(path: string, value: unknown, sha: string | null, 
     body,
   })
 
-  if (response.status === 409 || response.status === 422) throw new Error('远端已有新的 Bug 数据，请刷新后再提交')
+  if (response.status === 409 || response.status === 422) throw new CollaborationConflictError('远端已有新的 Bug 数据，提交草稿已保留')
   if (!response.ok) throw new Error(`提交 Gitee Bug 文件失败：${response.status}`)
 }
 

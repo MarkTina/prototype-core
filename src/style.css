@@ -1175,7 +1175,7 @@
   }
 
   .annotation-side-panel {
-    @apply fixed right-5 top-28 z-[90] flex max-h-[calc(100vh-8rem)] w-80 max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-[22px] border border-white/70 bg-panel/90 p-4 shadow-[0_24px_70px_rgb(0_0_0/0.14)] backdrop-blur-2xl;
+    @apply fixed right-5 top-28 z-[90] flex max-h-[calc(100vh-8rem)] w-96 max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-[22px] border border-white/70 bg-panel/90 p-4 shadow-[0_24px_70px_rgb(0_0_0/0.14)] backdrop-blur-2xl;
   }
 
   .annotation-side-panel.collapsed {
@@ -1401,6 +1401,10 @@
 
   .annotation-panel-actions button {
     @apply rounded-full border border-line bg-soft px-2 py-2 text-[11px] font-semibold text-muted transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .annotation-panel-actions:not(.description-actions) button {
+    @apply whitespace-nowrap px-1.5 text-[10px];
   }
 
   .annotation-panel-actions button.active {

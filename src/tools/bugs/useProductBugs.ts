@@ -1,6 +1,8 @@
 import { computed, ref } from 'vue'
 import { bugRemoteEnabled, loadRemoteBugs, updateRemoteBugs } from './bugClient'
 import { migrateFileCollaborationCache, readCollaborationCache, writeCollaborationCache } from '../../prototype/collaborationStore'
+import { CollaborationConflictError } from '../../prototype/annotationClient'
+import { assertUniqueBugIds, nextBugId } from './bugPolicy'
 import type { BugOwnerRole, BugSeverity, BugSourceSide, BugStatus, BugType, ProductBug, ProductBugAttachment } from './types'
 
 export const bugTypes: BugType[] = ['功能异常', 'UI/文案', '流程阻塞', '数据/报告', '设备/蓝牙', '性能/稳定性', '兼容性', '其他']
@@ -12,7 +14,7 @@ export const unresolvedBugStatuses: BugStatus[] = ['待处理', '已确认', '�
 
 const bugs = ref<ProductBug[]>([])
 const bugRemoteReady = ref(bugRemoteEnabled)
-const bugSyncStatus = ref<'idle' | 'loading' | 'success' | 'error'>(bugRemoteEnabled ? 'loading' : 'idle')
+const bugSyncStatus = ref<'idle' | 'loading' | 'success' | 'conflict' | 'error'>(bugRemoteEnabled ? 'loading' : 'idle')
 const bugSyncMessage = ref('')
 let initialized = false
 
@@ -143,40 +145,43 @@ async function initializeBugs() {
 }
 
 async function persistBugs(operatorName: string, operation: string, transform: (current: ProductBug[]) => ProductBug[]) {
+  const applyTransform = (current: ProductBug[]) => {
+    const normalizedCurrent = normalizeBugs(current)
+    assertUniqueBugIds(normalizedCurrent)
+    const next = normalizeBugs(transform(normalizedCurrent))
+    assertUniqueBugIds(next)
+    return next
+  }
   const applyLocal = () => {
-    bugs.value = normalizeBugs(transform(bugs.value))
+    bugs.value = applyTransform(bugs.value)
     saveLocalBugs(bugs.value)
   }
 
   if (bugRemoteReady.value) {
     try {
       setBugSync('loading', '正在提交 Gitee Bug 数据')
-      const saved = await updateRemoteBugs(operatorName, operation, (remoteValue) => normalizeBugs(transform(normalizeBugs(remoteValue))))
+      const saved = await updateRemoteBugs(operatorName, operation, applyTransform)
       bugs.value = normalizeBugs(saved?.value ?? [])
       writeCollaborationCache('bugs', bugs.value, saved?.sha ?? null, new Date().toISOString(), 'synced')
       setBugSync('success', 'Bug 数据已提交')
       return true
     } catch (error) {
-      setBugSync('error', error instanceof Error ? error.message : 'Bug 数据提交失败')
+      setBugSync(error instanceof CollaborationConflictError ? 'conflict' : 'error', error instanceof Error ? error.message : 'Bug 数据提交失败')
       return false
     }
   }
 
-  applyLocal()
-  setBugSync('success', 'Bug 数据已保存到本地')
-  return true
+  try {
+    applyLocal()
+    setBugSync('success', 'Bug 数据已保存到本地')
+    return true
+  } catch (error) {
+    setBugSync('error', error instanceof Error ? error.message : 'Bug 数据保存失败')
+    return false
+  }
 }
 
 const unresolvedBugCount = computed(() => bugs.value.filter((bug) => unresolvedBugStatuses.includes(bug.status)).length)
-
-function nextBugId(current: ProductBug[]) {
-  const maxNumber = current.reduce((max, bug) => {
-    const matched = /^BUG-(\d+)$/i.exec(bug.id.trim())
-    if (!matched) return max
-    return Math.max(max, Number.parseInt(matched[1], 10) || 0)
-  }, 0)
-  return `BUG-${String(maxNumber + 1).padStart(3, '0')}`
-}
 
 export function useProductBugs() {
   return {

@@ -3,6 +3,8 @@ import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { AlertTriangle, Bug, CheckCircle2, CircleDot, Filter, ImagePlus, Plus, RefreshCw, Search, Trash2, X } from '@lucide/vue'
 import { useProductBugs } from './useProductBugs'
 import { getPrototypeRuntime } from '../../core/productAdapter'
+import { getCollaborationContext } from '../../prototype/collaborationStore'
+import { collaborationCacheKey } from '../../prototype/collaborationPolicy'
 import { ossPreviewUrl, ossUploadEnabled, uploadImageToOss } from './ossClient'
 import type { BugOwnerRole, BugSeverity, BugSourceSide, BugStatus, BugType, ProductBug, ProductBugAttachment } from './types'
 
@@ -61,6 +63,7 @@ const pageSizeOptions = [10, 20, 50, 100] as const
 type BugSortKey = (typeof sortOptions)[number]['value']
 type BugPageSize = (typeof pageSizeOptions)[number]
 const DEFAULT_USER_STORAGE_KEY = 'prototype-core-annotation-author'
+const BUG_SUBMISSION_DRAFT_VERSION = 1 as const
 const MAX_PENDING_IMAGES = 10
 const deleteBugCode = getPrototypeRuntime().tools?.bugDeleteCode?.trim() ?? ''
 
@@ -74,6 +77,26 @@ interface PendingBugImage {
   originalSize: number
   status: 'ready' | 'uploading' | 'uploaded' | 'error'
   error?: string
+  uploadedAttachment?: ProductBugAttachment
+}
+
+interface BugSubmissionForm {
+  reporterName: string
+  title: string
+  type: BugType
+  severity: BugSeverity
+  sourceSide: BugSourceSide
+  sourceSideVersion: string
+  ownerRole: BugOwnerRole
+  description: string
+}
+
+interface StoredBugSubmissionDraft {
+  version: typeof BUG_SUBMISSION_DRAFT_VERSION
+  submissionId: string
+  form: BugSubmissionForm
+  attachments: ProductBugAttachment[]
+  updatedAt: string
 }
 
 function readDefaultUserName() {
@@ -94,7 +117,7 @@ function saveDefaultUserName(value: string) {
   }
 }
 
-const submitForm = reactive({
+const submitForm = reactive<BugSubmissionForm>({
   reporterName: readDefaultUserName(),
   title: '',
   type: '功能异常' as BugType,
@@ -104,6 +127,8 @@ const submitForm = reactive({
   ownerRole: '后端开发' as BugOwnerRole,
   description: '',
 })
+const submissionId = ref(createSubmissionId())
+const uploadedSubmitAttachments = ref<ProductBugAttachment[]>([])
 const submitError = ref('')
 const selectedBugId = ref('')
 const filters = reactive({
@@ -145,6 +170,110 @@ const pendingImages = ref<PendingBugImage[]>([])
 const imageNotice = ref('')
 const activeImagePreview = ref<ProductBugAttachment | null>(null)
 const ossReady = ossUploadEnabled()
+
+function createSubmissionId(): string {
+  return crypto.randomUUID?.() ?? `submission-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+function submissionDraftStorageKey() {
+  const context = getCollaborationContext()
+  return collaborationCacheKey(
+    [context.provider || 'local', context.owner || 'none', context.repo || 'none', context.remoteBranch, context.projectId, context.branchKey],
+    'bug-submit-draft',
+  )
+}
+
+function validStoredAttachment(value: unknown): value is ProductBugAttachment {
+  if (!value || typeof value !== 'object') return false
+  const item = value as Partial<ProductBugAttachment>
+  return typeof item.id === 'string'
+    && typeof item.name === 'string'
+    && typeof item.objectKey === 'string'
+    && typeof item.url === 'string'
+    && typeof item.mimeType === 'string'
+    && typeof item.size === 'number'
+    && typeof item.originalSize === 'number'
+    && typeof item.uploaderName === 'string'
+    && typeof item.createdAt === 'string'
+}
+
+function readSubmissionDraft(): StoredBugSubmissionDraft | null {
+  try {
+    const value = JSON.parse(window.localStorage.getItem(submissionDraftStorageKey()) ?? 'null') as Partial<StoredBugSubmissionDraft> | null
+    const form = value?.form
+    if (value?.version !== BUG_SUBMISSION_DRAFT_VERSION || typeof value.submissionId !== 'string' || !value.submissionId.trim() || !form) return null
+    if (typeof form.reporterName !== 'string' || typeof form.title !== 'string' || typeof form.sourceSideVersion !== 'string' || typeof form.description !== 'string') return null
+    if (!bugTypes.includes(form.type) || !bugSeverities.includes(form.severity) || !bugSourceSides.includes(form.sourceSide) || !bugOwnerRoles.includes(form.ownerRole)) return null
+    return {
+      version: BUG_SUBMISSION_DRAFT_VERSION,
+      submissionId: value.submissionId,
+      form: { ...form },
+      attachments: Array.isArray(value.attachments) ? value.attachments.filter(validStoredAttachment) : [],
+      updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : '',
+    }
+  } catch {
+    return null
+  }
+}
+
+function hasSubmissionDraftContent() {
+  return Boolean(
+    submitForm.title.trim()
+    || submitForm.description.trim()
+    || uploadedSubmitAttachments.value.length,
+  )
+}
+
+function saveSubmissionDraft() {
+  try {
+    if (!hasSubmissionDraftContent()) {
+      window.localStorage.removeItem(submissionDraftStorageKey())
+      return
+    }
+    const draft: StoredBugSubmissionDraft = {
+      version: BUG_SUBMISSION_DRAFT_VERSION,
+      submissionId: submissionId.value,
+      form: { ...submitForm },
+      attachments: uploadedSubmitAttachments.value,
+      updatedAt: new Date().toISOString(),
+    }
+    window.localStorage.setItem(submissionDraftStorageKey(), JSON.stringify(draft))
+  } catch {
+    // 草稿缓存失败不阻断用户继续提交。
+  }
+}
+
+function clearSubmissionDraft() {
+  try {
+    window.localStorage.removeItem(submissionDraftStorageKey())
+  } catch {
+    // 远端已成功时，本地清理失败不影响提交结果。
+  }
+  uploadedSubmitAttachments.value = []
+  submissionId.value = createSubmissionId()
+}
+
+const restoredSubmissionDraft = readSubmissionDraft()
+if (restoredSubmissionDraft) {
+  Object.assign(submitForm, restoredSubmissionDraft.form)
+  submissionId.value = restoredSubmissionDraft.submissionId
+  uploadedSubmitAttachments.value = restoredSubmissionDraft.attachments
+  pendingImages.value = restoredSubmissionDraft.attachments.map((attachment) => ({
+    id: `restored-${attachment.id}`,
+    name: attachment.name,
+    file: new Blob([], { type: attachment.mimeType }),
+    previewUrl: ossPreviewUrl(attachment.url),
+    mimeType: attachment.mimeType,
+    size: attachment.size,
+    originalSize: attachment.originalSize,
+    status: 'uploaded',
+    uploadedAttachment: attachment,
+  }))
+  if (restoredSubmissionDraft.attachments.length) imageNotice.value = `已恢复 ${restoredSubmissionDraft.attachments.length} 张待提交图片`
+}
+
+watch(submitForm, saveSubmissionDraft, { deep: true })
+watch(uploadedSubmitAttachments, saveSubmissionDraft, { deep: true })
 
 const selectedBug = computed(() => bugs.value.find((bug) => bug.id === selectedBugId.value) ?? null)
 const selectedBugEditable = computed(() => Boolean(selectedBug.value && !['已验证', '无需处理'].includes(selectedBug.value.status)))
@@ -221,9 +350,9 @@ function imageExtension(image: PendingBugImage) {
   return 'png'
 }
 
-function imageObjectKey(bugId: string, image: PendingBugImage) {
+function imageObjectKey(scopeId: string, image: PendingBugImage) {
   const timestamp = new Date().toISOString().replace(/\D/g, '').slice(0, 14)
-  return `bugs/${bugId}/${timestamp}-${safeFileName(image.name)}.${imageExtension(image)}`
+  return `bugs/${scopeId}/${timestamp}-${safeFileName(image.name)}.${imageExtension(image)}`
 }
 
 async function prepareImageFile(file: File): Promise<PendingBugImage> {
@@ -280,6 +409,9 @@ function handlePaste(event: ClipboardEvent) {
 function removePendingImage(id: string) {
   const target = pendingImages.value.find((image) => image.id === id)
   if (target) URL.revokeObjectURL(target.previewUrl)
+  if (target?.uploadedAttachment && !isEditingBug.value) {
+    uploadedSubmitAttachments.value = uploadedSubmitAttachments.value.filter((attachment) => attachment.id !== target.uploadedAttachment?.id)
+  }
   pendingImages.value = pendingImages.value.filter((image) => image.id !== id)
 }
 
@@ -287,18 +419,22 @@ function removeEditAttachment(id: string) {
   editAttachments.value = editAttachments.value.filter((attachment) => attachment.id !== id)
 }
 
-async function uploadPendingImages(bugId: string, uploaderName: string) {
+async function uploadPendingImages(scopeId: string, uploaderName: string) {
   if (!pendingImages.value.length) return []
   if (!ossReady) throw new Error('缺少 OSS 上传配置，无法上传图片')
   const attachments: ProductBugAttachment[] = []
 
   for (const image of pendingImages.value) {
+    if (image.uploadedAttachment) {
+      attachments.push(image.uploadedAttachment)
+      continue
+    }
     image.status = 'uploading'
     image.error = ''
     try {
-      const uploaded = await uploadImageToOss(imageObjectKey(bugId, image), image.file)
+      const uploaded = await uploadImageToOss(imageObjectKey(scopeId, image), image.file)
       image.status = 'uploaded'
-      attachments.push({
+      image.uploadedAttachment = {
         id: `att-${Date.now()}-${Math.random().toString(16).slice(2)}`,
         name: image.name,
         objectKey: uploaded.objectKey,
@@ -308,7 +444,8 @@ async function uploadPendingImages(bugId: string, uploaderName: string) {
         originalSize: image.originalSize,
         uploaderName,
         createdAt: new Date().toISOString(),
-      })
+      }
+      attachments.push(image.uploadedAttachment)
     } catch (error) {
       image.status = 'error'
       image.error = error instanceof Error ? error.message : '上传失败'
@@ -336,22 +473,28 @@ async function submitBug() {
     return
   }
 
-  const nextBugId = generateNextBugId(bugs.value)
-  let attachments: ProductBugAttachment[] = []
+  saveSubmissionDraft()
+  let attachments = [...uploadedSubmitAttachments.value]
 
   if (pendingImages.value.length) {
     try {
-      attachments = await uploadPendingImages(nextBugId, reporterName)
+      const uploaded = await uploadPendingImages(`pending/${submissionId.value}`, reporterName)
+      attachments = Array.from(new Map([...attachments, ...uploaded].map((attachment) => [attachment.id, attachment])).values())
+      uploadedSubmitAttachments.value = attachments
+      saveSubmissionDraft()
     } catch (error) {
       imageNotice.value = error instanceof Error ? error.message : '图片上传失败，Bug 未提交'
       return
     }
   }
 
+  let committedBugId = ''
   const saved = await persistBugs(reporterName, '新增 Bug', (current) => {
     const now = new Date().toISOString()
+    const assignedBugId = generateNextBugId(current)
+    committedBugId = assignedBugId
     const nextBug: ProductBug = {
-      id: nextBugId,
+      id: assignedBugId,
       title,
       type: submitForm.type,
       severity: submitForm.severity,
@@ -368,17 +511,28 @@ async function submitBug() {
     }
     return [nextBug, ...current]
   })
-  if (!saved) return
+  if (!saved) {
+    saveSubmissionDraft()
+    if (bugSyncStatus.value === 'conflict') {
+      await refreshBugs()
+      submitError.value = '远端 Bug 数据已更新，当前草稿和附件已保留，请再次提交'
+    } else {
+      submitError.value = `${bugSyncMessage.value || 'Bug 提交失败'}，当前草稿已保留`
+    }
+    return
+  }
   clearPendingImages()
+  clearSubmissionDraft()
   saveDefaultUserName(reporterName)
   submitForm.reporterName = reporterName
   submitForm.title = ''
   submitForm.sourceSideVersion = sourceSideVersion
   submitForm.description = ''
-  selectedBugId.value = nextBugId
+  selectedBugId.value = committedBugId
 }
 
 onBeforeUnmount(() => {
+  saveSubmissionDraft()
   clearPendingImages()
 })
 
