@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { AlertTriangle, Bug, CheckCircle2, CircleDot, Filter, ImagePlus, Plus, RefreshCw, Search, Trash2, X } from '@lucide/vue'
 import { useProductBugs } from './useProductBugs'
 import { getPrototypeRuntime } from '../../core/productAdapter'
@@ -180,6 +180,13 @@ const pendingImages = ref<PendingBugImage[]>([])
 const imageNotice = ref('')
 const activeImagePreview = ref<ProductBugAttachment | null>(null)
 const ossReady = ossUploadEnabled()
+
+function handleImagePreviewKeydown(event: KeyboardEvent) {
+  if (event.key !== 'Escape' || !activeImagePreview.value) return
+  event.preventDefault()
+  event.stopPropagation()
+  activeImagePreview.value = null
+}
 
 function createSubmissionId(): string {
   return crypto.randomUUID?.() ?? `submission-${Date.now()}-${Math.random().toString(16).slice(2)}`
@@ -576,8 +583,13 @@ async function submitBug() {
 }
 
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleImagePreviewKeydown, true)
   saveSubmissionDraft()
   clearPendingImages()
+})
+
+onMounted(() => {
+  window.addEventListener('keydown', handleImagePreviewKeydown, true)
 })
 
 function openBug(bug: ProductBug) {

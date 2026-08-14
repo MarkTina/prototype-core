@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { BookOpen, Cloud, Database, FileJson, Keyboard } from '@lucide/vue'
+import { BookOpen, Cloud, Database, FileJson, Keyboard, MessageSquare, PanelLeft } from '@lucide/vue'
 import ScreenRenderer from './screens/ScreenRenderer.vue'
 import TabBar from './components/phone/TabBar.vue'
 import PrototypeStateSwitcher from './components/phone/PrototypeStateSwitcher.vue'
@@ -1282,7 +1282,6 @@ const shortcutGroups: ShortcutGroup[] = [
           if (pageDescriptionSummaryVisible.value) pageDescriptionCopyNotice.value = ''
         },
       },
-      { key: 'Esc', label: '退出 / 取消操作', run: cancelCurrentShortcutOperation },
     ],
   },
 ]
@@ -1291,49 +1290,8 @@ const shortcutByKey = new Map(
   shortcutGroups.flatMap((group) => group.items).map((item) => [item.key.toLowerCase(), item]),
 )
 
-function cancelCurrentShortcutOperation() {
-  if (appRoute.value === 'help') {
-    closeHelpPage()
-    return
-  }
-  if (appRoute.value === 'themeGuide') {
-    closeThemeGuidePage()
-    return
-  }
-  if (appRoute.value === 'bugs') {
-    closeBugPage()
-    return
-  }
-  if (presentationMode.value) {
-    exitPresentationMode()
-    return
-  }
-  if (pageDescriptionSummaryVisible.value) {
-    pageDescriptionSummaryVisible.value = false
-    return
-  }
-  if (showEnvironmentCheckPanel.value) {
-    showEnvironmentCheckPanel.value = false
-    return
-  }
-  if (isPlacingAnnotation.value || annotationDraft.value) cancelAnnotationDraft()
-}
-
 function isEditableShortcutTarget(target: EventTarget | null) {
   return target instanceof HTMLElement && Boolean(target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])'))
-}
-
-function hasBlockingOverlay() {
-  return showUpdateHistory.value
-    || showPrototypeHealthPanel.value
-    || showEnvironmentCheckPanel.value
-    || showFlowEditor.value
-    || pageDescriptionEditing.value
-    || pageDescriptionSummaryVisible.value
-    || annotationDialogMode.value !== 'view'
-    || isPlacingAnnotation.value
-    || Boolean(activeAnnotation.value)
-    || Boolean(annotationDraft.value)
 }
 
 function handleShortcutKeydown(event: KeyboardEvent) {
@@ -1344,7 +1302,6 @@ function handleShortcutKeydown(event: KeyboardEvent) {
   const key = event.key === 'Escape' ? 'esc' : event.key.toLowerCase()
   const shortcut = shortcutByKey.get(key)
   if (!shortcut) return
-  if (key !== 'esc' && hasBlockingOverlay() && !(key === 'e' && pageDescriptionSummaryVisible.value)) return
 
   event.preventDefault()
   shortcut.run()
@@ -1993,7 +1950,8 @@ onBeforeUnmount(() => {
             type="button"
             @click="toggleInteractiveFlowNav"
           >
-            {{ interactiveFlowNavCollapsed ? '展开导航' : '收起导航' }}
+            <PanelLeft class="h-4 w-4" />
+            {{ interactiveFlowNavCollapsed ? '展开导航' : '收起导航' }} (N)
           </button>
           <div v-if="!interactiveFlowNavCollapsed" class="interactive-side-nav-scroll-wrap">
             <div
@@ -2224,7 +2182,8 @@ onBeforeUnmount(() => {
       :class="{ collapsed: annotationPanelCollapsed, 'description-view-mode': activeCollaborationTab === 'pageDescription' }"
     >
       <button class="annotation-panel-tab" type="button" @click="annotationPanelCollapsed = !annotationPanelCollapsed">
-        {{ annotationPanelCollapsed ? coreText('annotationExpand') : coreText('annotationCollapse') }}
+        <MessageSquare class="h-4 w-4" />
+        {{ annotationPanelCollapsed ? coreText('annotationExpand') : coreText('annotationCollapse') }} (C)
       </button>
       <template v-if="!annotationPanelCollapsed">
         <div class="annotation-panel-head">
@@ -2327,7 +2286,8 @@ onBeforeUnmount(() => {
       aria-label="当前协作数据来源"
     >
       <button class="annotation-panel-tab collaboration-source-toggle" type="button" @click="dataSourcePanelCollapsed = !dataSourcePanelCollapsed">
-        {{ dataSourcePanelCollapsed ? '展开数据源' : '收起数据源' }}
+        <Database class="h-4 w-4" />
+        {{ dataSourcePanelCollapsed ? '展开数据源' : '收起数据源' }} (D)
       </button>
       <template v-if="!dataSourcePanelCollapsed">
         <div class="collaboration-source-title">
@@ -2383,7 +2343,7 @@ onBeforeUnmount(() => {
     >
       <button class="annotation-panel-tab shortcut-panel-toggle" type="button" @click="shortcutPanelCollapsed = !shortcutPanelCollapsed">
         <Keyboard class="h-4 w-4" />
-        {{ shortcutPanelCollapsed ? '快捷键' : '收起快捷键' }}
+        {{ shortcutPanelCollapsed ? '快捷键' : '收起快捷键' }} (K)
       </button>
       <template v-if="!shortcutPanelCollapsed">
         <div class="shortcut-panel-head">
