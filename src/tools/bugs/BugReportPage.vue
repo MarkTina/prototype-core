@@ -790,7 +790,6 @@ async function updateBugStatus() {
     statusError.value = bugSyncMessage.value || 'Bug 状态修改失败'
     return
   }
-  saveDefaultUserName(fixerName || operatorName)
   statusForm.operatorName = readDefaultUserName()
   statusForm.note = ''
 }
@@ -1016,7 +1015,7 @@ async function updateBugStatus() {
       </section>
     </section>
 
-    <div v-if="selectedBug" class="bug-detail-backdrop" @click.self="closeDetail">
+    <div v-if="selectedBug" class="bug-detail-backdrop">
       <aside class="bug-detail-panel">
         <div class="bug-detail-head">
           <div>
