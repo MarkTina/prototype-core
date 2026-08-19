@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { AlertTriangle, Bug, CheckCircle2, CircleDot, Filter, ImagePlus, Plus, RefreshCw, Search, Trash2, X } from '@lucide/vue'
+import { AlertTriangle, Bug, CheckCircle2, CircleDot, FileSpreadsheet, Filter, ImagePlus, Plus, RefreshCw, Search, Trash2, X } from '@lucide/vue'
 import { useProductBugs } from './useProductBugs'
 import { getPrototypeRuntime } from '../../core/productAdapter'
 import { getCollaborationContext } from '../../prototype/collaborationStore'
 import { collaborationCacheKey } from '../../prototype/collaborationPolicy'
 import { ossPreviewUrl, ossUploadEnabled, uploadImageToOss } from './ossClient'
 import { bugIdExists, normalizeBugId } from './bugPolicy'
+import { exportBugsExcel } from './exportBugs'
 import type { BugOwnerRole, BugSeverity, BugSourceSide, BugStatus, BugType, ProductBug, ProductBugAttachment } from './types'
 
 const emit = defineEmits<{
@@ -27,6 +28,7 @@ const {
   bugSyncMessage,
   refreshBugs,
   persistBugs,
+  loadLatestBugsForExport,
   nextBugId: generateNextBugId,
 } = useProductBugs()
 
@@ -178,6 +180,9 @@ const editAttachments = ref<ProductBugAttachment[]>([])
 const imageInputRef = ref<HTMLInputElement | null>(null)
 const pendingImages = ref<PendingBugImage[]>([])
 const imageNotice = ref('')
+const exportingBugs = ref(false)
+const exportNotice = ref('')
+const exportNoticeTone = ref<'success' | 'error'>('success')
 const activeImagePreview = ref<ProductBugAttachment | null>(null)
 const ossReady = ossUploadEnabled()
 
@@ -793,6 +798,22 @@ async function updateBugStatus() {
   statusForm.operatorName = readDefaultUserName()
   statusForm.note = ''
 }
+
+async function handleExportBugs() {
+  exportingBugs.value = true
+  exportNotice.value = ''
+  try {
+    const latestBugs = await loadLatestBugsForExport()
+    const result = await exportBugsExcel(latestBugs)
+    exportNoticeTone.value = 'success'
+    exportNotice.value = `已导出 ${result.bugCount} 条 Bug、${result.attachmentCount} 个附件${result.thumbnailFailureCount ? `，${result.thumbnailFailureCount} 张缩略图读取失败，已保留原图链接` : ''}`
+  } catch (error) {
+    exportNoticeTone.value = 'error'
+    exportNotice.value = error instanceof Error ? error.message : 'Bug Excel 导出失败'
+  } finally {
+    exportingBugs.value = false
+  }
+}
 </script>
 
 <template>
@@ -803,13 +824,22 @@ async function updateBugStatus() {
         <h1>Bug 管理</h1>
         <p>面向测试和协作同事的产品 Bug 提报、筛选与状态流转。</p>
       </div>
-      <button class="bug-refresh-btn" type="button" :disabled="bugSyncStatus === 'loading'" @click="refreshBugs">
-        <span class="bug-refresh-main">
-          <RefreshCw class="h-4 w-4" />
-          <span>刷新</span>
-        </span>
-        <span class="bug-refresh-status" :class="`is-${bugSyncStatus}`">{{ bugSyncMessage || 'Bug 数据已就绪' }}</span>
-      </button>
+      <div class="bug-head-actions">
+        <button class="bug-refresh-btn" type="button" :disabled="bugSyncStatus === 'loading' || exportingBugs" @click="refreshBugs">
+          <span class="bug-refresh-main">
+            <RefreshCw class="h-4 w-4" />
+            <span>刷新</span>
+          </span>
+          <span class="bug-refresh-status" :class="`is-${bugSyncStatus}`">{{ bugSyncMessage || 'Bug 数据已就绪' }}</span>
+        </button>
+        <button class="bug-export-btn" type="button" :disabled="!bugRemoteReady || bugSyncStatus === 'loading' || exportingBugs" @click="handleExportBugs">
+          <span class="bug-refresh-main">
+            <FileSpreadsheet class="h-4 w-4" />
+            <span>{{ exportingBugs ? '导出中' : '导出 Excel' }}</span>
+          </span>
+          <span class="bug-export-status" :class="`is-${exportNoticeTone}`">{{ exportNotice || (bugRemoteReady ? '读取 Gitee 最新数据' : '未启用 Gitee') }}</span>
+        </button>
+      </div>
     </header>
 
     <section class="bug-stat-grid">

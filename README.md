@@ -27,6 +27,8 @@ void mountPrototypeApp({
 
 应用可通过顶部“测试用例”或固定路由 `#/test-cases` 打开工作台。测试用例按页面/状态 scope 管理：有状态页面使用 `<screenId>__<stateId>`，无状态页面使用 `<screenId>`。消费者可在 `public/test-cases.json` 提供数组种子，也可直接使用工作台导出的 `{ version, testCases }`；启用 Gitee 后，远端 `test-cases/<scopeId>.json` 和 `test-cases/manifest.json` 是协作真值。工作台支持整体导出 JSON 和带筛选、冻结表头的 `.xlsx`，导出不代表已写入消费者种子或 Gitee。
 
+Bug 管理页支持从 Gitee 最新 `bugs/bugs.json` 整体导出 `.xlsx`，不受当前筛选和分页影响。工作簿包含 Bug 明细、附件和状态历史三张表；附件保留原图链接并尽量嵌入缩略图。导出只读取远端真值，不写入 Gitee；远端未启用、读取失败或数据不完整时不会降级导出本地缓存。
+
 人或 AI 在消费者项目中执行接入、新建页面、状态、流程、页面描述、协作配置与验收时，统一参照 [消费者原型实施操作手册](https://github.com/MarkTina/prototype-core/blob/main/AI-PROTOTYPE-GUIDE.md) 的“触发词 → 标准动作 → 完成判定”流程。
 
 已挂载内核的应用可直接访问 `#/prototype-core-help` 阅读并复制同一份手册；该帮助路由只包含公开通用规则，不读取消费者业务数据。

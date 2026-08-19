@@ -399,19 +399,26 @@
   }
 
   .bug-refresh-btn,
+  .bug-export-btn,
   .bug-list-item > button {
     @apply inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-full border border-line bg-soft px-4 text-sm font-semibold text-ink transition hover:border-ocean/30 hover:bg-panel active:scale-95 disabled:cursor-not-allowed disabled:opacity-60;
   }
 
-  .bug-refresh-btn {
+  .bug-refresh-btn,
+  .bug-export-btn {
     @apply h-auto min-h-14 flex-col items-start gap-0.5 px-5 py-2.5 text-left;
+  }
+
+  .bug-head-actions {
+    @apply flex flex-col gap-2 sm:flex-row;
   }
 
   .bug-refresh-main {
     @apply inline-flex items-center gap-2;
   }
 
-  .bug-refresh-status {
+  .bug-refresh-status,
+  .bug-export-status {
     @apply max-w-40 truncate text-[11px] font-semibold leading-4 text-muted;
   }
 
@@ -436,12 +443,14 @@
   }
 
   .bug-stat-card.danger svg,
-  .bug-refresh-status.is-error {
+  .bug-refresh-status.is-error,
+  .bug-export-status.is-error {
     @apply text-danger;
   }
 
   .bug-stat-card.success svg,
-  .bug-refresh-status.is-success {
+  .bug-refresh-status.is-success,
+  .bug-export-status.is-success {
     @apply text-success;
   }
 
