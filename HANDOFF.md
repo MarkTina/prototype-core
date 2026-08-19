@@ -12,7 +12,7 @@
 
 - 依赖方向单向：产品依赖内核，内核不认识具体产品页面、状态或资源。
 - 公共入口使用 `mountPrototypeApp({ product, runtimeConfig })`；无配置时关闭访问认证并使用本地协作模式。
-- npm 包只发布编译后的 `dist`，Vue 与 Lucide 保持 peer dependencies。
+- npm 包只发布编译后的 `dist`，Vue 与 Lucide 保持 peer dependencies；ExcelJS 保持 runtime dependency 和库构建 external，由消费者完成唯一一次动态分包。
 - 版本遵循 SemVer；标签触发 npmjs 公共发布和 GitHub Release，安装端不需要 Token。
 - 公开安全优先于迁移便利，任何真实环境值和历史凭据都不得进入仓库。
 - 消费者状态页面以每个 `DisplayScreen` 实例的 `screen.stateId` 渲染；`activePrototypeStateId` 不作为全图或流程卡片的展示来源。状态切换可能重建组件，长任务必须外置或在终态再同步。
@@ -37,7 +37,7 @@
 - 协作缓存使用 schema v3：页面描述、注释与测试用例按 scope 保存独立 revision，流程与 Bug 按整文件保存，并区分 `synced/pending/stale/error`；旧 v2 缓存会保守迁移为 `stale`。
 - 多人新增 Bug 时，`BUG-xxx` 编号在读取 Gitee 最新整文件后分配，并由 SHA 冲突保护阻止新增竞争；历史重复 ID 不再阻塞无关状态写入，详情按具体记录定位，编辑表单可将重复 ID 修复为不区分大小写的唯一值。冲突或提交失败会按协作上下文保留表单草稿及已上传附件元数据，成功精确回读后才清理草稿。
 - Bug 管理页可直接读取 Gitee 最新整文件并导出 Excel；导出不受筛选和分页影响，分别生成 Bug 明细、附件和状态历史三张表。附件保留原图链接并尽量嵌入缩略图，远端不可用或数据不完整时不使用缓存冒充最新结果。
-- `#/test-cases` 提供跨移动端和 PC 页面的测试用例工作台；固定 7 个业务字段，支持单条显式保存、Gitee 冲突保护、未知页面保留，以及完整 JSON/Excel 导出。ExcelJS 仅在导出时懒加载。
+- `#/test-cases` 提供跨移动端和 PC 页面的测试用例工作台；固定 7 个业务字段，支持单条显式保存、Gitee 冲突保护、未知页面保留，以及完整 JSON/Excel 导出。ExcelJS 仅在导出时懒加载，并在内核库构建中 external，避免消费者生产构建二次转换其模块映射。
 - 交互模式与页面描述编辑弹窗可按当前 scope 切换查看 Gitee、本地缓存和静态 JSON；JSON 保持只读，本地缓存可独立编辑，缓存或 JSON 可在确认目标路径后推送 Gitee 并精确回读 scope 与 manifest。待推送缓存不会被轮询覆盖；JSON 不作为启用远端协作后的第二真值。
 - 页面描述 JSON 由 AI 修改后，也可通过浏览器命令或 `prototype-core-sync-page-descriptions` 终端命令执行批量差异同步；支持指定 Scope、逐项成功/跳过/失败结果和 Gitee 错误正文。
 - `AI-PROTOTYPE-GUIDE.md` 是消费者原型实施操作手册，以触发词路由接入、页面、状态、跳转、流程、协作配置、升级和验收，并为每项操作定义固定动作与完成判定。
@@ -103,7 +103,7 @@
 - **背景**: 测试用例既需要优秀的宽表编辑体验，也必须与页面状态和协作真值精确对应。
 - **决策**: 使用独立工作台；业务字段固定为 7 项，数据按页面/状态 scope 存储，单条显式提交并整体导出。
 - **原因**: 独立工作台避免侧栏宽度限制；scope 文件和 manifest 可复用现有冲突、缓存与精确回读契约。
-- **影响**: 新增 `testCases` 公共协作资源和 ExcelJS 懒加载块；删除页面或状态不会自动删除历史用例。
+- **影响**: 新增 `testCases` 公共协作资源；ExcelJS 仅在导出时懒加载，内核发布包保留裸依赖供消费者单次分包；删除页面或状态不会自动删除历史用例。
 - **日期**: 2026-07-15。
 
 ### DR-20260810-01: 内核工具文案固定为中文
@@ -116,7 +116,7 @@
 
 <!-- fresh-meta
 last-updated: 2026-08-19
-trigger-reason: 新增 Gitee 最新 Bug 数据 Excel 整体导出
+trigger-reason: 修复消费者生产构建对 ExcelJS 动态模块的二次转换
 updated-by: handoff-maintainer
-next-review: 当 Bug 导出字段、附件处理或远端真值策略变化时
+next-review: 当运行时依赖外置策略或消费者生产构建链变化时
 -->

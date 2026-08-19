@@ -33,6 +33,11 @@ for (const file of files) {
   for (const match of matches) violations.push(`${relative('.', file)}: ${match}`)
 }
 
+const viteConfig = await readFile('vite.config.ts', 'utf8')
+if (!/external:\s*\[[^\]]*['"]exceljs['"][^\]]*\]/s.test(viteConfig)) {
+  violations.push('vite.config.ts: ExcelJS 必须保持为库构建 external，避免消费者生产构建二次转换动态模块')
+}
+
 if (violations.length) {
   console.error('🚧 [架构边界] 内核禁止直接导入产品目录：')
   for (const violation of violations) console.error(`- ${violation}`)

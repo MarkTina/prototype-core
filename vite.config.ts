@@ -17,7 +17,7 @@ export default defineConfig({
       cssFileName: 'style',
     },
     rollupOptions: {
-      external: ['vue', '@lucide/vue'],
+      external: ['vue', '@lucide/vue', 'exceljs'],
       output: {
         globals: { vue: 'Vue' },
       },

@@ -29,6 +29,7 @@
 - 发布包只允许包含 `dist`、README、LICENSE 和包元数据；不得发布源码仓库配置、种子或环境文件。
 - 仓库公开，禁止提交 `.env`、Token、口令、服务器地址或真实协作配置；示例只能使用虚构值。
 - Vue 与 `@lucide/vue` 是 peer dependencies，禁止打入运行包造成重复实例。
+- ExcelJS 是运行时 dependency，但必须在内核库构建中保持 external，由消费者生产构建完成唯一一次动态分包；禁止打入内核 dist 后再由消费者二次转换。
 - `examples/basic` 是端到端契约测试，不承载真实产品需求。
 - 开发与预览服务必须监听 `0.0.0.0`；启动前检查端口，只关闭本次启动的进程。
 - `#/prototype-core-help` 是公开通用帮助路由，内容来自构建时内嵌的 `AI-PROTOTYPE-GUIDE.md`；`#/prototype-core-theme` 是公开通用主题准则路由，内容来自构建时内嵌的 `DESIGN-TOKENS.md`；不得在这些页面混入消费者数据或运行配置。
