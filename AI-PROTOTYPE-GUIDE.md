@@ -137,7 +137,7 @@ export const product: PrototypeProductDefinition = {
   document: {
     title: '示例产品',
     description: '示例产品需求文档',
-    url: 'https://example.com/product-requirements',
+    url: import.meta.env.VITE_PRODUCT_DOCUMENT_URL?.trim() || undefined,
   },
   updateHistory: __BUSINESS_UPDATE_HISTORY__,
   pages: [
@@ -178,14 +178,20 @@ export const product: PrototypeProductDefinition = {
 
 ### 5.1 顶部产品文档配置
 
-顶部左侧的标题和描述用于说明当前产品文档，右侧“产品需求文档”按钮读取同一份 `document` 配置。配置属于消费者产品定义，不应写入内核源码或 `runtimeConfig`：
+顶部左侧的标题和描述用于说明当前产品文档，右侧“产品需求文档”按钮读取同一份 `document` 配置。配置属于消费者产品定义，不应写入内核源码或 `runtimeConfig`。文档地址集中放在消费者 `.env` 中：
+
+```dotenv
+VITE_PRODUCT_DOCUMENT_URL=https://example.com/product-requirements
+```
+
+产品定义只读取该变量：
 
 ```ts
 export const product: PrototypeProductDefinition = {
   document: {
     title: '产品名称或文档标题',
     description: '当前产品需求文档的简短说明',
-    url: 'https://example.com/product-requirements',
+    url: import.meta.env.VITE_PRODUCT_DOCUMENT_URL?.trim() || undefined,
   },
   // pages、states、copy、flows...
 }
@@ -200,8 +206,9 @@ export const product: PrototypeProductDefinition = {
 | `url` | 可选 | “产品需求文档”按钮的新标签页目标地址 |
 
 - `document` 为兼容旧消费者保持可选；新接入或升级后的消费者应显式配置。
+- 环境变量统一使用 `VITE_PRODUCT_DOCUMENT_URL`；可提交 `.env.example` 占位说明，真实 `.env` 不得提交。
 - 未配置 `url` 或内容为空时，点击按钮不会打开新标签页，而是提示在 `PrototypeProductDefinition.document.url` 中配置。
-- URL 应由消费者业务侧维护。公开仓库和示例只能使用公开地址或虚构值，不得写入 Token、口令或带鉴权参数的私有链接。
+- `VITE_` 变量会进入浏览器构建产物，因此 URL 不得包含 Token、口令或鉴权参数。公开仓库和示例只能使用公开地址或虚构值。
 - 标题区域仍用于返回原型首页；打开文档使用右侧“产品需求文档”按钮。
 
 完成判定：顶部标题和描述与配置一致；点击按钮能在新标签页打开目标文档；临时移除 `url` 后点击只显示未配置提示，不产生空白标签页。

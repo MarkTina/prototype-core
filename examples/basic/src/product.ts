@@ -7,7 +7,7 @@ export const product: PrototypeProductDefinition = {
   document: {
     title: 'Prototype Core 基础示例',
     description: '基础示例产品需求文档',
-    url: 'https://example.com/product-requirements',
+    url: import.meta.env.VITE_PRODUCT_DOCUMENT_URL?.trim() || undefined,
   },
   updateHistory: __BUSINESS_UPDATE_HISTORY__,
   pages: [

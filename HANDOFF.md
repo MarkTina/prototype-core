@@ -43,7 +43,7 @@
 - `AI-PROTOTYPE-GUIDE.md` 是消费者原型实施操作手册，以触发词路由接入、页面、状态、跳转、流程、协作配置、升级和验收，并为每项操作定义固定动作与完成判定。
 - 消费者手册已补齐手机画布容器边界、公共标题与圆角、TabBar 分栏、`screen.stateId` 状态契约、预览数据隔离及计时/Canvas 生命周期验收规则。
 - 内核提供公开的 `#/prototype-core-help` 路由和顶部紧凑文档图标，构建时内嵌操作手册 Markdown，供人或 AI 直接读取和复制，不依赖消费者认证或静态文件部署。
-- 顶部产品文档标题、描述和地址由消费者通过 `PrototypeProductDefinition.document` 注入；未配置地址时按钮只提示配置路径，不再打开内核硬编码链接。版本区明确标注“内核当前/内核最新”。
+- 顶部产品文档标题、描述和地址由消费者通过 `PrototypeProductDefinition.document` 注入；地址应集中维护在消费者 `.env` 的 `VITE_PRODUCT_DOCUMENT_URL`，产品定义读取后注入。未配置地址时按钮只提示配置路径，不再打开内核硬编码链接。版本区明确标注“内核当前/内核最新”。
 - 更新历史由消费者构建时读取自身 Git `HEAD` 并通过 `PrototypeProductDefinition.updateHistory` 注入；内核不再固化自身提交。未接入与已接入但无记录使用不同空状态。
 
 ## 演进方向
@@ -116,7 +116,7 @@
 
 <!-- fresh-meta
 last-updated: 2026-08-19
-trigger-reason: 修复消费者生产构建对 ExcelJS 动态模块的二次转换
+trigger-reason: 统一消费者产品需求文档地址的环境变量来源
 updated-by: handoff-maintainer
-next-review: 当运行时依赖外置策略或消费者生产构建链变化时
+next-review: 当产品文档公共契约或消费者环境变量约定变化时
 -->
