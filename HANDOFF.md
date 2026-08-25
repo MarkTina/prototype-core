@@ -26,7 +26,7 @@
 - 业务升级通知通过 `runtimeConfig.versionUpdate` 显式注册消费者构建版本；内核在启动、定时轮询和页面恢复可见时读取 `version.json`，并用 `BroadcastChannel` 加速同源窗口通知。未注册时完全关闭检测；消费者必须保证页面版本与清单版本来自同一次构建，并最后发布无缓存的 `version.json`。
 - 数据源面板可检查 Gitee、OSS、部署、原型访问和 Bug 删除密码共 20 项配置；只展示变量名与存在状态，不读取或显示敏感值。
 - Gitee 与 OSS 配置已改为运行时注入；这些浏览器端能力只适用于原型，不构成生产级秘密保护。
-- npm 公共发布已可用；`publish.yml` 会校验 npm 版本基线、自动升级或恢复 patch 版本，构建打包后原子推送版本提交与标签，再幂等发布 npm 和 GitHub Release，最后核对主分支、标签、npm `latest` 与 Release。Trusted Publisher 必须与 `MarkTina/prototype-core` 和 `publish.yml` 精确绑定；禁止本地正式发布。
+- npm 公共发布已可用；`publish.yml` 使用兼容 Node 24 的官方 Action 主版本，校验 npm 版本基线、自动升级或恢复 patch 版本，构建打包后原子推送版本提交与标签，再幂等发布 npm 和 GitHub Release，最后核对主分支、标签、npm `latest` 与 Release。Trusted Publisher 必须与 `MarkTina/prototype-core` 和 `publish.yml` 精确绑定；禁止本地正式发布。
 - 页面描述支持 `highlighted` 与可选 `highlightColor` 重点标注；导航和状态页切换以名称前的彩色书签展示，旧数据默认使用红色。自定义颜色列表按项目缓存在浏览器本地。
 - 移动端演示模式保持 `393×852` 基准画布并按视口整体等比缩放，不会因演示尺寸变化触发业务页面响应式重排。
 - 添加注释点时，页面内所有内容统一使用十字光标，点击交互组件只创建标注并阻止其业务操作；取消添加后恢复正常交互。
