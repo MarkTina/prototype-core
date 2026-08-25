@@ -408,13 +408,13 @@ function imageExtension(image: PendingBugImage) {
 
 function imageObjectKey(scopeId: string, image: PendingBugImage) {
   const timestamp = new Date().toISOString().replace(/\D/g, '').slice(0, 14)
-  return `bugs/${scopeId}/${timestamp}-${safeFileName(image.name)}.${imageExtension(image)}`
+  return `bugs/${scopeId}/${timestamp}-${image.id}-${safeFileName(image.name)}.${imageExtension(image)}`
 }
 
 async function prepareImageFile(file: File): Promise<PendingBugImage> {
   if (!['image/png', 'image/jpeg', 'image/jpg', 'image/webp'].includes(file.type)) throw new Error('仅支持 png、jpg、jpeg、webp 图片')
   return {
-    id: `pending-image-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    id: `pending-image-${createSubmissionId()}`,
     name: file.name || `clipboard-${Date.now()}.png`,
     file,
     previewUrl: URL.createObjectURL(file),
