@@ -18,6 +18,8 @@ jobs:
   publish:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
+    env:
+      PACKAGE_NAME: '@marktowin/prototype-core'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,39 +31,153 @@ jobs:
           registry-url: https://registry.npmjs.org
           cache: pnpm
       - run: npm install --global npm@^11.5.1
-      - run: pnpm install --frozen-lockfile
       - name: 检查 npm Token
         shell: bash
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
+          set -euo pipefail
           if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
             echo "::error::缺少 GitHub Repository Secret：NPM_TOKEN"
             exit 1
           fi
-      - name: 自动升级 patch 版本
+      - name: 确定或恢复发布版本
         id: version
         shell: bash
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          npm version patch -m "chore(release): publish %s [skip ci]"
-          VERSION="$(node -p "require('./package.json').version")"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-      - run: pnpm build
-      - run: pnpm pack --pack-destination release
-      - name: 发布 npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public --provenance
-      - name: 推送版本提交和标签
+
+          CURRENT_VERSION="$(node -p "require('./package.json').version")"
+          NPM_VERSION="$(npm view "${PACKAGE_NAME}" version)"
+          CURRENT_TAG="v${CURRENT_VERSION}"
+          HEAD_SUBJECT="$(git log -1 --pretty=%s)"
+
+          if git tag --points-at HEAD --list "${CURRENT_TAG}" | grep -Fxq "${CURRENT_TAG}" \
+            || [ "${HEAD_SUBJECT}" = "chore(release): publish ${CURRENT_VERSION} [skip ci]" ]; then
+            VERSION="${CURRENT_VERSION}"
+            MODE="recover"
+            if git rev-parse "refs/tags/v${VERSION}" >/dev/null 2>&1; then
+              TAG_COMMIT="$(git rev-list -n 1 "v${VERSION}")"
+              if [ "${TAG_COMMIT}" != "$(git rev-parse HEAD)" ]; then
+                echo "::error::标签 v${VERSION} 未指向当前发布提交"
+                exit 1
+              fi
+            else
+              git tag "v${VERSION}"
+            fi
+          else
+            if [ "${CURRENT_VERSION}" != "${NPM_VERSION}" ]; then
+              echo "::error::发布基线不一致：package.json=${CURRENT_VERSION}，npm latest=${NPM_VERSION}。请先恢复既有发布，不得继续升级版本。"
+              exit 1
+            fi
+            npm version patch -m "chore(release): publish %s [skip ci]"
+            VERSION="$(node -p "require('./package.json').version")"
+            MODE="new"
+          fi
+
+          test "$(node -p "require('./package.json').version")" = "${VERSION}"
+          test "$(git rev-list -n 1 "v${VERSION}")" = "$(git rev-parse HEAD)"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "mode=${MODE}" >> "$GITHUB_OUTPUT"
+          echo "准备发布 ${PACKAGE_NAME}@${VERSION}（${MODE}）"
+      - run: pnpm install --frozen-lockfile
+      - name: 构建与测试
+        run: pnpm build
+      - name: 生成发布包
+        run: pnpm pack --pack-destination release
+      - name: 检查发布包内容与敏感信息
         shell: bash
         run: |
-          git push origin HEAD:main
-          git push origin "v${{ steps.version.outputs.version }}"
-      - name: 创建 GitHub Release
+          set -euo pipefail
+          TARBALL="$(find release -maxdepth 1 -type f -name '*.tgz' -print -quit)"
+          if [ -z "${TARBALL}" ]; then
+            echo "::error::未生成 npm 发布包"
+            exit 1
+          fi
+
+          while IFS= read -r entry; do
+            case "${entry}" in
+              package/dist/*|package/package.json|package/README.md|package/LICENSE|package/scripts/sync-page-descriptions.mjs) ;;
+              *)
+                echo "::error::发布包包含未允许文件：${entry}"
+                exit 1
+                ;;
+            esac
+          done < <(tar -tzf "${TARBALL}")
+
+          mkdir -p release/unpacked
+          tar -xzf "${TARBALL}" -C release/unpacked
+          SECRET_FILES="$(grep -RIlE '(npm_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|gh[pousr]_[A-Za-z0-9]{30,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)' release/unpacked || true)"
+          if [ -n "${SECRET_FILES}" ]; then
+            echo "::error::发布包疑似包含密钥，已中止发布"
+            exit 1
+          fi
+      - name: 原子推送版本提交和标签
+        shell: bash
+        run: git push --atomic origin HEAD:main "v${{ steps.version.outputs.version }}"
+      - name: 幂等发布 npm
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          PUBLISHED_VERSIONS="$(npm view "${PACKAGE_NAME}" versions --json)"
+          if node -e 'const versions = JSON.parse(process.argv[1]); process.exit((Array.isArray(versions) ? versions : [versions]).includes(process.argv[2]) ? 0 : 1)' "${PUBLISHED_VERSIONS}" "${VERSION}"; then
+            echo "${PACKAGE_NAME}@${VERSION} 已存在，跳过重复发布"
+          else
+            TARBALL="$(find release -maxdepth 1 -type f -name '*.tgz' -print -quit)"
+            npm publish "${TARBALL}" --access public --provenance
+          fi
+      - name: 幂等创建 GitHub Release
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "v${{ steps.version.outputs.version }}" release/*.tgz --generate-notes --title "Prototype Core ${{ steps.version.outputs.version }}"
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          TARBALL="$(find release -maxdepth 1 -type f -name '*.tgz' -print -quit)"
+          if gh release view "v${VERSION}" >/dev/null 2>&1; then
+            gh release upload "v${VERSION}" "${TARBALL}" --clobber
+          else
+            gh release create "v${VERSION}" "${TARBALL}" --generate-notes --title "Prototype Core ${VERSION}"
+          fi
+      - name: 核对发布结果
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          HEAD_COMMIT="$(git rev-parse HEAD)"
+          REMOTE_MAIN="$(git ls-remote origin refs/heads/main | cut -f1)"
+          REMOTE_TAG="$(git ls-remote origin "refs/tags/v${VERSION}^{}" | cut -f1)"
+          if [ -z "${REMOTE_TAG}" ]; then
+            REMOTE_TAG="$(git ls-remote origin "refs/tags/v${VERSION}" | cut -f1)"
+          fi
+          RELEASE_TAG="$(gh release view "v${VERSION}" --json tagName --jq '.tagName')"
+          TARBALL="$(find release -maxdepth 1 -type f -name '*.tgz' -print -quit)"
+          RELEASE_ASSET="$(gh release view "v${VERSION}" --json assets --jq '.assets[].name' | grep -Fx "$(basename "${TARBALL}")" || true)"
+
+          NPM_VERSION=""
+          NPM_LATEST=""
+          for attempt in 1 2 3 4 5 6; do
+            NPM_VERSION="$(npm view "${PACKAGE_NAME}@${VERSION}" version 2>/dev/null || true)"
+            NPM_LATEST="$(npm view "${PACKAGE_NAME}" dist-tags.latest 2>/dev/null || true)"
+            if [ "${NPM_VERSION}" = "${VERSION}" ] && [ "${NPM_LATEST}" = "${VERSION}" ]; then
+              break
+            fi
+            if [ "${attempt}" -lt 6 ]; then
+              sleep 10
+            fi
+          done
+
+          test "${REMOTE_MAIN}" = "${HEAD_COMMIT}"
+          test "${REMOTE_TAG}" = "${HEAD_COMMIT}"
+          test "${NPM_VERSION}" = "${VERSION}"
+          test "${NPM_LATEST}" = "${VERSION}"
+          test "${RELEASE_TAG}" = "v${VERSION}"
+          test "${RELEASE_ASSET}" = "$(basename "${TARBALL}")"
+          echo "发布核对完成：main、v${VERSION}、npm latest 与 GitHub Release 已对齐"

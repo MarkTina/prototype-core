@@ -13,7 +13,7 @@
 - 依赖方向单向：产品依赖内核，内核不认识具体产品页面、状态或资源。
 - 公共入口使用 `mountPrototypeApp({ product, runtimeConfig })`；无配置时关闭访问认证并使用本地协作模式。
 - npm 包只发布编译后的 `dist`，Vue 与 Lucide 保持 peer dependencies；ExcelJS 保持 runtime dependency 和库构建 external，由消费者完成唯一一次动态分包。
-- 版本遵循 SemVer；标签触发 npmjs 公共发布和 GitHub Release，安装端不需要 Token。
+- 版本遵循 SemVer；正式发布统一由 `publish.yml` 在 `main` 推送后执行，安装端不需要 Token。
 - 公开安全优先于迁移便利，任何真实环境值和历史凭据都不得进入仓库。
 - 消费者状态页面以每个 `DisplayScreen` 实例的 `screen.stateId` 渲染；`activePrototypeStateId` 不作为全图或流程卡片的展示来源。状态切换可能重建组件，长任务必须外置或在终态再同步。
 
@@ -26,7 +26,7 @@
 - 业务升级通知通过 `runtimeConfig.versionUpdate` 显式注册消费者构建版本；内核在启动、定时轮询和页面恢复可见时读取 `version.json`，并用 `BroadcastChannel` 加速同源窗口通知。未注册时完全关闭检测；消费者必须保证页面版本与清单版本来自同一次构建，并最后发布无缓存的 `version.json`。
 - 数据源面板可检查 Gitee、OSS、部署、原型访问和 Bug 删除密码共 20 项配置；只展示变量名与存在状态，不读取或显示敏感值。
 - Gitee 与 OSS 配置已改为运行时注入；这些浏览器端能力只适用于原型，不构成生产级秘密保护。
-- npm 公共发布已可用；推送 `main` 后由 `publish.yml` 自动升级 patch 版本并发布。Trusted Publisher 必须与 `MarkTina/prototype-core` 和 `publish.yml` 精确绑定；本地 Token 发布需显式关闭 provenance。
+- npm 公共发布已可用；`publish.yml` 会校验 npm 版本基线、自动升级或恢复 patch 版本，构建打包后原子推送版本提交与标签，再幂等发布 npm 和 GitHub Release，最后核对主分支、标签、npm `latest` 与 Release。Trusted Publisher 必须与 `MarkTina/prototype-core` 和 `publish.yml` 精确绑定；禁止本地正式发布。
 - 页面描述支持 `highlighted` 与可选 `highlightColor` 重点标注；导航和状态页切换以名称前的彩色书签展示，旧数据默认使用红色。自定义颜色列表按项目缓存在浏览器本地。
 - 移动端演示模式保持 `393×852` 基准画布并按视口整体等比缩放，不会因演示尺寸变化触发业务页面响应式重排。
 - 添加注释点时，页面内所有内容统一使用十字光标，点击交互组件只创建标注并阻止其业务操作；取消添加后恢复正常交互。
@@ -115,9 +115,17 @@
 - **影响**: 消费者只维护自身业务文案；新增内核文案必须加入 `CoreCopyKey` 覆盖的中文源并通过完整性测试。
 - **日期**: 2026-08-10。
 
+### DR-20260825-01: 正式发布统一使用可恢复的 GitHub 管线
+
+- **背景**: 旧管线先发布 npm，再分别推送版本提交和标签；任一步骤失败都可能造成 npm、主分支、标签或 GitHub Release 不一致。
+- **决策**: 正式发布只允许使用 `publish.yml`；版本提交与标签原子推送，npm 与 Release 幂等发布，失败后通过同一管线恢复当前版本。
+- **原因**: Git 与 npm 无法组成跨平台事务，原子维护 Git 引用并让外部发布步骤可重复执行，可以把失败收敛为可恢复状态。
+- **影响**: 普通提交不手工升级版本；管线仅在版本基线一致时创建新 patch，终态必须精确核对主分支、标签、npm `latest` 和 GitHub Release。
+- **日期**: 2026-08-25。
+
 <!-- fresh-meta
 last-updated: 2026-08-25
-trigger-reason: 修复 Bug 多图上传时同名 OSS 对象互相覆盖
+trigger-reason: 统一 npm 正式发布为可恢复的 GitHub 管线
 updated-by: handoff-maintainer
-next-review: 当 Bug 附件上传契约或发布状态变化时
+next-review: 当发布认证、版本策略或管线步骤变化时
 -->
