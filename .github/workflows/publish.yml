@@ -80,8 +80,9 @@ jobs:
               echo "::error::未发布版本 ${CURRENT_VERSION} 缺少恢复标签 ${CURRENT_TAG}"
               exit 1
             fi
-            RETAG_OLD_SHA="$(git rev-list -n 1 "${CURRENT_TAG}")"
-            if ! git merge-base --is-ancestor "${RETAG_OLD_SHA}" HEAD; then
+            RETAG_OLD_SHA="$(git rev-parse "refs/tags/${CURRENT_TAG}")"
+            RETAG_OLD_COMMIT="$(git rev-list -n 1 "${CURRENT_TAG}")"
+            if ! git merge-base --is-ancestor "${RETAG_OLD_COMMIT}" HEAD; then
               echo "::error::恢复标签 ${CURRENT_TAG} 未指向当前提交的祖先，禁止移动标签"
               exit 1
             fi
