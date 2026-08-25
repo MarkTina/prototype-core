@@ -102,7 +102,7 @@ pnpm pack:check
 - 正常发布由非 Bot 提交推送到 `main` 触发；普通开发提交保持当前 `package.json.version`，管线确认它与 npm `latest` 一致后自动升级一个 patch 版本。
 - 固定顺序为：校验版本基线和 Token → 安装依赖 → 自动生成或恢复版本 → `pnpm build` → 打包 → 检查 tarball 白名单与敏感信息 → 原子推送版本提交和 `v<version>` 标签 → 幂等发布 npm → 幂等创建 GitHub Release → 精确核对结果。
 - 版本提交与标签必须使用 `git push --atomic` 同时推送；禁止拆成两次推送。npm 和 GitHub Release 发布前必须先检查目标是否已存在，存在时跳过发布或覆盖同名 Release 附件，不得再次升级版本。
-- 管线失败时只允许修复失败原因后从 GitHub Actions 使用 `workflow_dispatch` 重跑同一管线；若当前 `HEAD` 是发布提交或对应版本标签，管线必须恢复该版本，不得再生成下一个版本。
+- 管线失败且不需要修改 workflow 时，只允许修复外部原因后使用 `workflow_dispatch` 重跑；若当前 `HEAD` 是发布提交或对应版本标签，必须恢复该版本，不得再生成下一个版本。若必须修改 workflow，修复提交推送 `main` 后也必须恢复原版本；只有在目标版本尚未发布到 npm、旧标签仍指向当前提交祖先时，管线才可用旧 SHA 租约保护原子移动该标签，已发布标签禁止移动。
 - 完成判定：`origin/main` 的发布提交、`v<package.version>` 标签、npm 对应版本及 `latest`、GitHub Release 四者完全一致；只看到 Actions 绿色、npm 成功或标签存在均不算完成。
 
 ## 修改禁区

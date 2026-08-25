@@ -51,8 +51,16 @@ jobs:
 
           CURRENT_VERSION="$(node -p "require('./package.json').version")"
           NPM_VERSION="$(npm view "${PACKAGE_NAME}" version)"
+          PUBLISHED_VERSIONS="$(npm view "${PACKAGE_NAME}" versions --json)"
           CURRENT_TAG="v${CURRENT_VERSION}"
           HEAD_SUBJECT="$(git log -1 --pretty=%s)"
+          RETAG_OLD_SHA=""
+
+          if node -e 'const versions = JSON.parse(process.argv[1]); process.exit((Array.isArray(versions) ? versions : [versions]).includes(process.argv[2]) ? 0 : 1)' "${PUBLISHED_VERSIONS}" "${CURRENT_VERSION}"; then
+            CURRENT_PUBLISHED="true"
+          else
+            CURRENT_PUBLISHED="false"
+          fi
 
           if git tag --points-at HEAD --list "${CURRENT_TAG}" | grep -Fxq "${CURRENT_TAG}" \
             || [ "${HEAD_SUBJECT}" = "chore(release): publish ${CURRENT_VERSION} [skip ci]" ]; then
@@ -67,6 +75,19 @@ jobs:
             else
               git tag "v${VERSION}"
             fi
+          elif [ "${CURRENT_VERSION}" != "${NPM_VERSION}" ] && [ "${CURRENT_PUBLISHED}" = "false" ]; then
+            if ! git rev-parse "refs/tags/${CURRENT_TAG}" >/dev/null 2>&1; then
+              echo "::error::未发布版本 ${CURRENT_VERSION} 缺少恢复标签 ${CURRENT_TAG}"
+              exit 1
+            fi
+            RETAG_OLD_SHA="$(git rev-list -n 1 "${CURRENT_TAG}")"
+            if ! git merge-base --is-ancestor "${RETAG_OLD_SHA}" HEAD; then
+              echo "::error::恢复标签 ${CURRENT_TAG} 未指向当前提交的祖先，禁止移动标签"
+              exit 1
+            fi
+            VERSION="${CURRENT_VERSION}"
+            MODE="recover-retag"
+            git tag -f "${CURRENT_TAG}" HEAD
           else
             if [ "${CURRENT_VERSION}" != "${NPM_VERSION}" ]; then
               echo "::error::发布基线不一致：package.json=${CURRENT_VERSION}，npm latest=${NPM_VERSION}。请先恢复既有发布，不得继续升级版本。"
@@ -81,6 +102,7 @@ jobs:
           test "$(git rev-list -n 1 "v${VERSION}")" = "$(git rev-parse HEAD)"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "mode=${MODE}" >> "$GITHUB_OUTPUT"
+          echo "retag_old_sha=${RETAG_OLD_SHA}" >> "$GITHUB_OUTPUT"
           echo "准备发布 ${PACKAGE_NAME}@${VERSION}（${MODE}）"
       - run: pnpm install --frozen-lockfile
       - name: 构建与测试
@@ -116,7 +138,15 @@ jobs:
           fi
       - name: 原子推送版本提交和标签
         shell: bash
-        run: git push --atomic origin HEAD:main "v${{ steps.version.outputs.version }}"
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          if [ "${{ steps.version.outputs.mode }}" = "recover-retag" ]; then
+            OLD_SHA="${{ steps.version.outputs.retag_old_sha }}"
+            git push --atomic --force-with-lease="refs/tags/v${VERSION}:${OLD_SHA}" origin HEAD:main "refs/tags/v${VERSION}"
+          else
+            git push --atomic origin HEAD:main "refs/tags/v${VERSION}"
+          fi
       - name: 幂等发布 npm
         shell: bash
         env:
@@ -129,7 +159,7 @@ jobs:
             echo "${PACKAGE_NAME}@${VERSION} 已存在，跳过重复发布"
           else
             TARBALL="$(find release -maxdepth 1 -type f -name '*.tgz' -print -quit)"
-            npm publish "${TARBALL}" --access public --provenance
+            npm publish "./${TARBALL}" --access public --provenance
           fi
       - name: 幂等创建 GitHub Release
         shell: bash
