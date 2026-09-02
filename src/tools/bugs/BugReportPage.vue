@@ -8,6 +8,7 @@ import { collaborationCacheKey } from '../../prototype/collaborationPolicy'
 import { ossPreviewUrl, ossUploadEnabled, uploadImageToOss } from './ossClient'
 import { bugIdExists, normalizeBugId } from './bugPolicy'
 import { exportBugsExcel } from './exportBugs'
+import { normalizeBugOwnerRoles } from './bugModel'
 import type { BugOwnerRole, BugSeverity, BugSourceSide, BugStatus, BugType, ProductBug, ProductBugAttachment } from './types'
 
 const emit = defineEmits<{
@@ -90,7 +91,7 @@ interface BugSubmissionForm {
   severity: BugSeverity
   sourceSide: BugSourceSide
   sourceSideVersion: string
-  ownerRole: BugOwnerRole
+  ownerRoles: BugOwnerRole[]
   description: string
 }
 
@@ -127,7 +128,7 @@ const submitForm = reactive<BugSubmissionForm>({
   severity: 'P2' as BugSeverity,
   sourceSide: '安卓侧' as BugSourceSide,
   sourceSideVersion: '',
-  ownerRole: '后端开发' as BugOwnerRole,
+  ownerRoles: ['后端开发'] as BugOwnerRole[],
   description: '',
 })
 const submissionId = ref(createSubmissionId())
@@ -173,7 +174,7 @@ const editForm = reactive({
   severity: 'P2' as BugSeverity,
   sourceSide: '安卓侧' as BugSourceSide,
   sourceSideVersion: '',
-  ownerRole: '后端开发' as BugOwnerRole,
+  ownerRoles: ['后端开发'] as BugOwnerRole[],
   description: '',
 })
 const editAttachments = ref<ProductBugAttachment[]>([])
@@ -222,14 +223,24 @@ function validStoredAttachment(value: unknown): value is ProductBugAttachment {
 function readSubmissionDraft(): StoredBugSubmissionDraft | null {
   try {
     const value = JSON.parse(window.localStorage.getItem(submissionDraftStorageKey()) ?? 'null') as Partial<StoredBugSubmissionDraft> | null
-    const form = value?.form
+    const form = value?.form as (Partial<BugSubmissionForm> & { ownerRole?: unknown; ownerRoles?: unknown }) | undefined
     if (value?.version !== BUG_SUBMISSION_DRAFT_VERSION || typeof value.submissionId !== 'string' || !value.submissionId.trim() || !form) return null
     if (typeof form.reporterName !== 'string' || typeof form.title !== 'string' || typeof form.sourceSideVersion !== 'string' || typeof form.description !== 'string') return null
-    if (!bugTypes.includes(form.type) || !bugSeverities.includes(form.severity) || !bugSourceSides.includes(form.sourceSide) || !bugOwnerRoles.includes(form.ownerRole)) return null
+    const ownerRoles = normalizeBugOwnerRoles(form.ownerRoles, form.ownerRole)
+    if (!bugTypes.includes(form.type as BugType) || !bugSeverities.includes(form.severity as BugSeverity) || !bugSourceSides.includes(form.sourceSide as BugSourceSide) || !ownerRoles) return null
     return {
       version: BUG_SUBMISSION_DRAFT_VERSION,
       submissionId: value.submissionId,
-      form: { ...form },
+      form: {
+        reporterName: form.reporterName,
+        title: form.title,
+        type: form.type as BugType,
+        severity: form.severity as BugSeverity,
+        sourceSide: form.sourceSide as BugSourceSide,
+        sourceSideVersion: form.sourceSideVersion,
+        ownerRoles,
+        description: form.description,
+      },
       attachments: Array.isArray(value.attachments) ? value.attachments.filter(validStoredAttachment) : [],
       updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : '',
     }
@@ -338,6 +349,15 @@ const closedCount = computed(() => bugs.value.filter((bug) => bug.status === '�
 const sourceSideVersionSuggestions = computed(() =>
   Array.from(new Set(bugs.value.map((bug) => bug.sourceSideVersion?.trim()).filter((value): value is string => Boolean(value)))).sort((a, b) => a.localeCompare(b)),
 )
+
+function ownerRolesLabel(ownerRoles: BugOwnerRole[]) {
+  return ownerRoles.join('、')
+}
+
+function isLastSelectedOwnerRole(ownerRoles: BugOwnerRole[], role: BugOwnerRole) {
+  return ownerRoles.length === 1 && ownerRoles[0] === role
+}
+
 const filteredBugs = computed(() => {
   const keyword = filters.keyword.trim().toLowerCase()
   return bugs.value.filter((bug) => {
@@ -345,11 +365,11 @@ const filteredBugs = computed(() => {
     if (filters.severity !== '全部' && bug.severity !== filters.severity) return false
     if (filters.sourceSide !== '全部' && bug.sourceSide !== filters.sourceSide) return false
     if (filters.sourceSideVersion !== '全部' && bug.sourceSideVersion !== filters.sourceSideVersion) return false
-    if (filters.ownerRole !== '全部' && bug.ownerRole !== filters.ownerRole) return false
+    if (filters.ownerRole !== '全部' && !bug.ownerRoles.includes(filters.ownerRole)) return false
     if (filters.status === '未修复' && !unresolvedBugStatuses.includes(bug.status)) return false
     if (filters.status !== '全部' && filters.status !== '未修复' && bug.status !== filters.status) return false
     if (!keyword) return true
-    return [bug.id, bug.title, bug.description, bug.reporterName, bug.fixerName, bug.type, bug.severity, bug.sourceSide, bug.sourceSideVersion, bug.ownerRole, bug.status]
+    return [bug.id, bug.title, bug.description, bug.reporterName, bug.fixerName, bug.type, bug.severity, bug.sourceSide, bug.sourceSideVersion, ownerRolesLabel(bug.ownerRoles), bug.status]
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(keyword))
   })
@@ -524,8 +544,8 @@ async function submitBug() {
   const title = submitForm.title.trim()
   const description = submitForm.description.trim()
   const sourceSideVersion = submitForm.sourceSideVersion.trim()
-  if (!reporterName || !title || !description) {
-    submitError.value = '请填写提报人姓名、标题和问题描述'
+  if (!reporterName || !title || !description || !submitForm.ownerRoles.length) {
+    submitError.value = '请填写提报人姓名、标题、归属和问题描述'
     return
   }
 
@@ -555,7 +575,8 @@ async function submitBug() {
       severity: submitForm.severity,
       sourceSide: submitForm.sourceSide,
       sourceSideVersion: sourceSideVersion || undefined,
-      ownerRole: submitForm.ownerRole,
+      ownerRole: submitForm.ownerRoles[0],
+      ownerRoles: [...submitForm.ownerRoles],
       status: '待处理',
       description,
       reporterName,
@@ -639,7 +660,7 @@ function startBugEdit() {
   editForm.severity = bug.severity
   editForm.sourceSide = bug.sourceSide
   editForm.sourceSideVersion = bug.sourceSideVersion ?? ''
-  editForm.ownerRole = bug.ownerRole
+  editForm.ownerRoles = [...bug.ownerRoles]
   editForm.description = bug.description
   editAttachments.value = [...(bug.attachments ?? [])]
   clearPendingImages()
@@ -702,8 +723,8 @@ async function saveBugEdit() {
   const description = editForm.description.trim()
   const sourceSideVersion = editForm.sourceSideVersion.trim()
   const operatorName = statusForm.operatorName.trim() || readDefaultUserName() || bug.reporterName
-  if (!id || !title || !description) {
-    editError.value = '请填写 Bug ID、标题和问题描述'
+  if (!id || !title || !description || !editForm.ownerRoles.length) {
+    editError.value = '请填写 Bug ID、标题、归属和问题描述'
     return
   }
 
@@ -733,7 +754,8 @@ async function saveBugEdit() {
             severity: selectedBugEditable.value ? editForm.severity : item.severity,
             sourceSide: selectedBugEditable.value ? editForm.sourceSide : item.sourceSide,
             sourceSideVersion: selectedBugEditable.value ? sourceSideVersion || undefined : item.sourceSideVersion,
-            ownerRole: selectedBugEditable.value ? editForm.ownerRole : item.ownerRole,
+            ownerRole: selectedBugEditable.value ? editForm.ownerRoles[0] : item.ownerRole,
+            ownerRoles: selectedBugEditable.value ? [...editForm.ownerRoles] : item.ownerRoles,
             description: selectedBugEditable.value ? description : item.description,
             attachments: selectedBugEditable.value ? nextAttachments : item.attachments,
             updatedAt: now,
@@ -905,12 +927,23 @@ async function handleExportBugs() {
             <span>发生侧版本</span>
             <input v-model="submitForm.sourceSideVersion" type="text" list="bug-source-side-version-options" placeholder="如 iOS 1.2.3 / 后端 2026.06" />
           </label>
-          <label>
-            <span>归属</span>
-            <select v-model="submitForm.ownerRole">
-              <option v-for="role in bugOwnerRoles" :key="role" :value="role">{{ role }}</option>
-            </select>
-          </label>
+          <div class="bug-field">
+            <span class="bug-field-label">归属</span>
+            <details class="bug-owner-picker">
+              <summary>{{ ownerRolesLabel(submitForm.ownerRoles) }}</summary>
+              <div class="bug-owner-options">
+                <label v-for="role in bugOwnerRoles" :key="role">
+                  <input
+                    v-model="submitForm.ownerRoles"
+                    type="checkbox"
+                    :value="role"
+                    :disabled="isLastSelectedOwnerRole(submitForm.ownerRoles, role)"
+                  />
+                  <span>{{ role }}</span>
+                </label>
+              </div>
+            </details>
+          </div>
         </div>
         <label>
           <span>问题描述</span>
@@ -1017,7 +1050,7 @@ async function handleExportBugs() {
                 <span :class="`severity-${severityTone[bug.severity]}`">{{ bug.severity }}</span>
                 <span>发生侧：{{ bug.sourceSide }}</span>
                 <span v-if="bug.sourceSideVersion">版本：{{ bug.sourceSideVersion }}</span>
-                <span>归属：{{ bug.ownerRole }}</span>
+                <span>归属：{{ ownerRolesLabel(bug.ownerRoles) }}</span>
                 <i :class="`status-${statusTone[bug.status]}`">{{ bug.status }}</i>
               </div>
               <h2>{{ bug.title }}</h2>
@@ -1059,7 +1092,7 @@ async function handleExportBugs() {
           <span :class="`severity-${severityTone[selectedBug.severity]}`">{{ selectedBug.severity }}</span>
           <span>发生侧：{{ selectedBug.sourceSide }}</span>
           <span v-if="selectedBug.sourceSideVersion">版本：{{ selectedBug.sourceSideVersion }}</span>
-          <span>归属：{{ selectedBug.ownerRole }}</span>
+          <span>归属：{{ ownerRolesLabel(selectedBug.ownerRoles) }}</span>
           <span :class="`status-${statusTone[selectedBug.status]}`">{{ selectedBug.status }}</span>
         </div>
         <div class="bug-detail-actions">
@@ -1120,12 +1153,23 @@ async function handleExportBugs() {
               <span>发生侧版本</span>
               <input v-model="editForm.sourceSideVersion" type="text" list="bug-source-side-version-options" placeholder="如 iOS 1.2.3 / 后端 2026.06" :disabled="!selectedBugEditable" />
             </label>
-            <label>
-              <span>归属</span>
-              <select v-model="editForm.ownerRole" :disabled="!selectedBugEditable">
-                <option v-for="role in bugOwnerRoles" :key="role" :value="role">{{ role }}</option>
-              </select>
-            </label>
+            <div class="bug-field">
+              <span class="bug-field-label">归属</span>
+              <details class="bug-owner-picker" :class="{ 'is-disabled': !selectedBugEditable }">
+                <summary @click="!selectedBugEditable && $event.preventDefault()">{{ ownerRolesLabel(editForm.ownerRoles) }}</summary>
+                <div class="bug-owner-options">
+                  <label v-for="role in bugOwnerRoles" :key="role">
+                    <input
+                      v-model="editForm.ownerRoles"
+                      type="checkbox"
+                      :value="role"
+                      :disabled="!selectedBugEditable || isLastSelectedOwnerRole(editForm.ownerRoles, role)"
+                    />
+                    <span>{{ role }}</span>
+                  </label>
+                </div>
+              </details>
+            </div>
           </div>
           <label>
             <span>问题描述</span>

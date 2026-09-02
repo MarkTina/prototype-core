@@ -19,8 +19,16 @@ function isBugSourceSide(value: unknown): value is BugSourceSide {
   return typeof value === 'string' && bugSourceSides.includes(value as BugSourceSide)
 }
 
-function isBugOwnerRole(value: unknown): value is BugOwnerRole {
+export function isBugOwnerRole(value: unknown): value is BugOwnerRole {
   return typeof value === 'string' && bugOwnerRoles.includes(value as BugOwnerRole)
+}
+
+export function normalizeBugOwnerRoles(ownerRoles: unknown, ownerRole?: unknown): BugOwnerRole[] | null {
+  if (Array.isArray(ownerRoles)) {
+    if (!ownerRoles.length || !ownerRoles.every(isBugOwnerRole)) return null
+    return Array.from(new Set(ownerRoles))
+  }
+  return isBugOwnerRole(ownerRole) ? [ownerRole] : null
 }
 
 function isBugStatus(value: unknown): value is BugStatus {
@@ -51,10 +59,11 @@ function normalizeAttachment(raw: unknown): ProductBugAttachment | null {
 
 function normalizeBug(raw: unknown): ProductBug | null {
   if (!raw || typeof raw !== 'object') return null
-  const item = raw as Partial<ProductBug>
+  const item = raw as Partial<ProductBug> & { ownerRoles?: unknown; ownerRole?: unknown }
   if (typeof item.id !== 'string' || !item.id.trim()) return null
   if (typeof item.title !== 'string' || !item.title.trim()) return null
-  if (!isBugType(item.type) || !isBugOwnerRole(item.ownerRole) || !isBugStatus(item.status)) return null
+  const ownerRoles = normalizeBugOwnerRoles(item.ownerRoles, item.ownerRole)
+  if (!isBugType(item.type) || !ownerRoles || !isBugStatus(item.status)) return null
   if (typeof item.description !== 'string' || !item.description.trim()) return null
   if (typeof item.reporterName !== 'string' || !item.reporterName.trim()) return null
   const createdAt = typeof item.createdAt === 'string' && item.createdAt ? item.createdAt : new Date().toISOString()
@@ -67,7 +76,8 @@ function normalizeBug(raw: unknown): ProductBug | null {
     severity: isBugSeverity(item.severity) ? item.severity : 'P2',
     sourceSide: isBugSourceSide(item.sourceSide) ? item.sourceSide : '后端',
     sourceSideVersion: typeof item.sourceSideVersion === 'string' && item.sourceSideVersion.trim() ? item.sourceSideVersion.trim() : undefined,
-    ownerRole: item.ownerRole,
+    ownerRole: ownerRoles[0],
+    ownerRoles,
     status: item.status,
     description: item.description.trim(),
     reporterName: item.reporterName.trim(),

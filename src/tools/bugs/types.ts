@@ -34,6 +34,7 @@ export interface ProductBug {
   sourceSide: BugSourceSide
   sourceSideVersion?: string
   ownerRole: BugOwnerRole
+  ownerRoles: BugOwnerRole[]
   status: BugStatus
   description: string
   reporterName: string

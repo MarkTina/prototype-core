@@ -30,6 +30,7 @@ function bug(overrides: Partial<ProductBug> = {}): ProductBug {
     sourceSide: 'iOS 侧',
     sourceSideVersion: '1.2.3',
     ownerRole: 'iOS 开发',
+    ownerRoles: ['iOS 开发'],
     status: '修复中',
     description: '点击提交后无响应',
     reporterName: '测试员',
@@ -60,7 +61,7 @@ function bug(overrides: Partial<ProductBug> = {}): ProductBug {
 }
 
 test('Bug 工作簿包含明细、附件和状态历史三张表', async () => {
-  const result = await buildBugsWorkbook([bug()], {
+  const result = await buildBugsWorkbook([bug({ ownerRoles: ['iOS 开发', '产品经理'] })], {
     thumbnailLoader: async (item) => {
       if (item.id === 'image-2') throw new Error('模拟图片读取失败')
       return { base64: pixel, extension: 'png', width: 200, height: 100 }
@@ -78,6 +79,7 @@ test('Bug 工作簿包含明细、附件和状态历史三张表', async () => {
   ])
   assert.equal(bugSheet.rowCount, 2)
   assert.equal(bugSheet.getCell('A2').value, 'BUG-001')
+  assert.equal(bugSheet.getCell('G2').value, 'iOS 开发、产品经理')
   assert.ok(bugSheet.getCell('L2').value instanceof Date)
   assert.equal(bugSheet.getCell('L2').numFmt, 'yyyy-mm-dd hh:mm:ss')
   assert.equal(bugSheet.views[0]?.state, 'frozen')
@@ -127,6 +129,16 @@ test('远端 Bug 数据支持安卓+iOS 发生侧', () => {
     exists: true,
   })
   assert.equal(all[0]?.sourceSide, '安卓+iOS')
+})
+
+test('远端 Bug 数据兼容旧单归属并支持多归属', () => {
+  const legacy = bug({ ownerRole: '产品经理', ownerRoles: undefined as unknown as ProductBug['ownerRoles'] })
+  const all = requireRemoteBugsForExport({
+    value: [legacy, bug({ id: 'BUG-002', ownerRole: '后端开发', ownerRoles: ['后端开发', 'iOS 开发'] })],
+    exists: true,
+  })
+  assert.deepEqual(all.find((item) => item.id === 'BUG-001')?.ownerRoles, ['产品经理'])
+  assert.deepEqual(all.find((item) => item.id === 'BUG-002')?.ownerRoles, ['后端开发', 'iOS 开发'])
 })
 
 test('远端不可用、文件缺失或数据无效时中止导出', () => {

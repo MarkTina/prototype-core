@@ -107,7 +107,7 @@ function addBugSheet(workbook: Workbook, bugs: ProductBug[]) {
     severity: bug.severity,
     sourceSide: bug.sourceSide,
     sourceSideVersion: bug.sourceSideVersion ?? '',
-    ownerRole: bug.ownerRole,
+    ownerRole: bug.ownerRoles.join('、'),
     status: bug.status,
     description: bug.description,
     reporterName: bug.reporterName,
