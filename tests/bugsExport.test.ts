@@ -121,6 +121,14 @@ test('远端导出数据保留全部状态并按更新时间从新到旧排序',
   assert.deepEqual(all.map((item) => item.status), ['待处理', '已验证'])
 })
 
+test('远端 Bug 数据支持安卓+iOS 发生侧', () => {
+  const all = requireRemoteBugsForExport({
+    value: [bug({ sourceSide: '安卓+iOS' })],
+    exists: true,
+  })
+  assert.equal(all[0]?.sourceSide, '安卓+iOS')
+})
+
 test('远端不可用、文件缺失或数据无效时中止导出', () => {
   assert.throws(() => requireRemoteBugsForExport(null, false), /未启用 Gitee/)
   assert.throws(() => requireRemoteBugsForExport(null), /文件不存在/)
