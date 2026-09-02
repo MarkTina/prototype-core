@@ -123,22 +123,26 @@ test('远端导出数据保留全部状态并按更新时间从新到旧排序',
   assert.deepEqual(all.map((item) => item.status), ['待处理', '已验证'])
 })
 
-test('远端 Bug 数据支持安卓+iOS 发生侧', () => {
+test('远端 Bug 数据支持扩展发生侧', () => {
   const all = requireRemoteBugsForExport({
-    value: [bug({ sourceSide: '安卓+iOS' })],
+    value: [
+      bug({ id: 'BUG-001', sourceSide: '安卓+iOS' }),
+      bug({ id: 'BUG-002', sourceSide: '硬件设计' }),
+      bug({ id: 'BUG-003', sourceSide: '嵌入式' }),
+    ],
     exists: true,
   })
-  assert.equal(all[0]?.sourceSide, '安卓+iOS')
+  assert.deepEqual(all.map((item) => item.sourceSide), ['安卓+iOS', '硬件设计', '嵌入式'])
 })
 
 test('远端 Bug 数据兼容旧单归属并支持多归属', () => {
   const legacy = bug({ ownerRole: '产品经理', ownerRoles: undefined as unknown as ProductBug['ownerRoles'] })
   const all = requireRemoteBugsForExport({
-    value: [legacy, bug({ id: 'BUG-002', ownerRole: '后端开发', ownerRoles: ['后端开发', 'iOS 开发'] })],
+    value: [legacy, bug({ id: 'BUG-002', ownerRole: 'UI设计', ownerRoles: ['UI设计', 'iOS 开发'] })],
     exists: true,
   })
   assert.deepEqual(all.find((item) => item.id === 'BUG-001')?.ownerRoles, ['产品经理'])
-  assert.deepEqual(all.find((item) => item.id === 'BUG-002')?.ownerRoles, ['后端开发', 'iOS 开发'])
+  assert.deepEqual(all.find((item) => item.id === 'BUG-002')?.ownerRoles, ['UI设计', 'iOS 开发'])
 })
 
 test('远端不可用、文件缺失或数据无效时中止导出', () => {
