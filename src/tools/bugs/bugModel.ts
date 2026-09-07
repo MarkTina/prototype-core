@@ -5,7 +5,7 @@ export const bugSeverities: BugSeverity[] = ['P0', 'P1', 'P2', 'P3', 'P4']
 export const bugSourceSides: BugSourceSide[] = ['安卓侧', 'iOS 侧', '安卓+iOS', '后端', '硬件设计', '嵌入式']
 export const bugOwnerRoles: BugOwnerRole[] = ['后端开发', 'iOS 开发', '安卓开发', '产品经理', '算法开发', '硬件嵌入式开发', 'UI设计']
 export const bugStatuses: BugStatus[] = ['待处理', '已确认', '修复中', '已修复', '已验证', '无需处理']
-export const unresolvedBugStatuses: BugStatus[] = ['待处理', '已确认', '修复中']
+export const unresolvedBugStatuses: BugStatus[] = ['待处理', '修复中']
 
 function isBugType(value: unknown): value is BugType {
   return typeof value === 'string' && bugTypes.includes(value as BugType)

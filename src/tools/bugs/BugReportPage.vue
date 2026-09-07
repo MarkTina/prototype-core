@@ -23,7 +23,6 @@ const {
   bugOwnerRoles,
   bugStatuses,
   unresolvedBugStatuses,
-  unresolvedBugCount,
   bugRemoteReady,
   bugSyncStatus,
   bugSyncMessage,
@@ -344,8 +343,11 @@ const selectedBugHasDuplicateId = computed(() => {
 })
 const selectedBugEditable = computed(() => Boolean(selectedBug.value && !['已验证', '无需处理'].includes(selectedBug.value.status)))
 const canStartBugEdit = computed(() => selectedBugEditable.value || selectedBugHasDuplicateId.value)
-const fixedCount = computed(() => bugs.value.filter((bug) => bug.status === '已修复' || bug.status === '已验证').length)
-const closedCount = computed(() => bugs.value.filter((bug) => bug.status === '无需处理').length)
+const bugStatusCounts = computed<Record<BugStatus, number>>(() => {
+  const counts = Object.fromEntries(bugStatuses.map((status) => [status, 0])) as Record<BugStatus, number>
+  for (const bug of bugs.value) counts[bug.status] += 1
+  return counts
+})
 const sourceSideVersionSuggestions = computed(() =>
   Array.from(new Set(bugs.value.map((bug) => bug.sourceSideVersion?.trim()).filter((value): value is string => Boolean(value)))).sort((a, b) => a.localeCompare(b)),
 )
@@ -867,23 +869,33 @@ async function handleExportBugs() {
     <section class="bug-stat-grid">
       <article class="bug-stat-card danger">
         <AlertTriangle class="h-5 w-5" />
-        <span>未修复</span>
-        <strong>{{ unresolvedBugCount }}</strong>
+        <span>待处理</span>
+        <strong>{{ bugStatusCounts['待处理'] }}</strong>
+      </article>
+      <article class="bug-stat-card warning">
+        <CircleDot class="h-5 w-5" />
+        <span>已确认</span>
+        <strong>{{ bugStatusCounts['已确认'] }}</strong>
+      </article>
+      <article class="bug-stat-card progress">
+        <Bug class="h-5 w-5" />
+        <span>修复中</span>
+        <strong>{{ bugStatusCounts['修复中'] }}</strong>
+      </article>
+      <article class="bug-stat-card is-fixed">
+        <CheckCircle2 class="h-5 w-5" />
+        <span>已修复</span>
+        <strong>{{ bugStatusCounts['已修复'] }}</strong>
       </article>
       <article class="bug-stat-card success">
         <CheckCircle2 class="h-5 w-5" />
-        <span>已修复/验证</span>
-        <strong>{{ fixedCount }}</strong>
+        <span>已验证</span>
+        <strong>{{ bugStatusCounts['已验证'] }}</strong>
       </article>
       <article class="bug-stat-card muted">
-        <CircleDot class="h-5 w-5" />
+        <X class="h-5 w-5" />
         <span>无需处理</span>
-        <strong>{{ closedCount }}</strong>
-      </article>
-      <article class="bug-stat-card sync" :class="`is-${bugSyncStatus}`">
-        <Bug class="h-5 w-5" />
-        <span>{{ bugRemoteReady ? 'Gitee 同步' : '本地兜底' }}</span>
-        <strong>{{ bugSyncStatus === 'loading' ? '同步中' : bugs.length }}</strong>
+        <strong>{{ bugStatusCounts['无需处理'] }}</strong>
       </article>
     </section>
 

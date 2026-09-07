@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import ExcelJS from 'exceljs'
 import { bugExportFilename, buildBugsWorkbook } from '../src/tools/bugs/exportBugs.ts'
-import { requireRemoteBugsForExport } from '../src/tools/bugs/bugModel.ts'
+import { requireRemoteBugsForExport, unresolvedBugStatuses } from '../src/tools/bugs/bugModel.ts'
 import type { ProductBug, ProductBugAttachment } from '../src/tools/bugs/types.ts'
 
 const pixel = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
@@ -59,6 +59,11 @@ function bug(overrides: Partial<ProductBug> = {}): ProductBug {
     ...overrides,
   }
 }
+
+test('未修复口径不包含已确认状态', () => {
+  assert.deepEqual(unresolvedBugStatuses, ['待处理', '修复中'])
+  assert.equal(unresolvedBugStatuses.includes('已确认'), false)
+})
 
 test('Bug 工作簿包含明细、附件和状态历史三张表', async () => {
   const result = await buildBugsWorkbook([bug({ ownerRoles: ['iOS 开发', '产品经理'] })], {

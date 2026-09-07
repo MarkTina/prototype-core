@@ -423,7 +423,7 @@
   }
 
   .bug-stat-grid {
-    @apply grid gap-3 sm:grid-cols-2 lg:grid-cols-4;
+    @apply grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6;
   }
 
   .bug-stat-card {
@@ -448,14 +448,19 @@
     @apply text-danger;
   }
 
+  .bug-stat-card.warning svg {
+    @apply text-warning;
+  }
+
+  .bug-stat-card.progress svg {
+    @apply text-ocean;
+  }
+
+  .bug-stat-card.is-fixed svg,
   .bug-stat-card.success svg,
   .bug-refresh-status.is-success,
   .bug-export-status.is-success {
     @apply text-success;
-  }
-
-  .bug-stat-card.sync.is-loading svg {
-    @apply animate-spin text-warning;
   }
 
   .bug-workspace {
