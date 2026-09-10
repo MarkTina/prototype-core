@@ -1,4 +1,5 @@
 import { computed, reactive, ref, watch, type CSSProperties } from 'vue'
+import { currentUserName } from './personNameMemory'
 import {
   PanelTop,
   RotateCcw,
@@ -291,7 +292,6 @@ const themeCopy: Record<string, { name: string; description: string }> = {
 }
 
 const CUSTOM_THEME_STORAGE_KEY = 'prototype-core-custom-theme'
-const ANNOTATION_AUTHOR_STORAGE_KEY = 'prototype-core-annotation-author'
 const ANNOTATION_POLLING_INTERVAL_STORAGE_KEY = 'prototype-core-collaboration-polling-interval-v2'
 const DEFAULT_ANNOTATION_POLLING_INTERVAL_SECONDS = 60
 const MIN_ANNOTATION_POLLING_INTERVAL_SECONDS = 10
@@ -320,7 +320,7 @@ const activeCollaborationTab = ref<'annotations' | 'pageDescription'>('annotatio
 const annotationRemoteReady = ref(annotationRemoteEnabled)
 const annotationSyncStatus = ref<'idle' | 'syncing' | 'success' | 'error'>('idle')
 const annotationSyncLabel = ref(annotationRemoteEnabled ? '云端协作已启用' : '本地兜底模式')
-const annotationAuthorName = ref('')
+const annotationAuthorName = currentUserName
 const annotationPollingIntervalSeconds = ref(DEFAULT_ANNOTATION_POLLING_INTERVAL_SECONDS)
 const annotationPollingIntervalInput = ref(String(DEFAULT_ANNOTATION_POLLING_INTERVAL_SECONDS))
 const annotationPollingNotice = ref('')
@@ -864,8 +864,6 @@ async function loadLocalJson<T>(fileName: string, fallback: T): Promise<T> {
 
 async function initializePrototype() {
   if (typeof window !== 'undefined') window.__PROTOTYPE_CORE__ = { syncPageDescriptionsFromJson }
-  const savedAuthor = storage()?.getItem(ANNOTATION_AUTHOR_STORAGE_KEY)
-  if (savedAuthor) annotationAuthorName.value = savedAuthor
   const savedIntervalRaw = storage()?.getItem(ANNOTATION_POLLING_INTERVAL_STORAGE_KEY)
   const savedInterval = savedIntervalRaw === null || savedIntervalRaw === undefined ? Number.NaN : Number(savedIntervalRaw)
   if (Number.isFinite(savedInterval)) {
@@ -947,10 +945,6 @@ async function initializePrototype() {
 watch([customThemeConfig, selectedThemeId], () => {
   storage()?.setItem(CUSTOM_THEME_STORAGE_KEY, JSON.stringify({ version: 2, selectedThemeId: selectedThemeId.value, ...customThemeConfig.value }))
 }, { deep: true })
-
-watch(annotationAuthorName, (value) => {
-  if (value.trim()) storage()?.setItem(ANNOTATION_AUTHOR_STORAGE_KEY, value.trim())
-})
 
 watch([currentScreen, activePrototypeStateId], () => {
   syncPageDescriptionEditor()

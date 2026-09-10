@@ -5,6 +5,7 @@ import { useProductBugs } from './useProductBugs'
 import { getPrototypeRuntime } from '../../core/productAdapter'
 import { getCollaborationContext } from '../../prototype/collaborationStore'
 import { collaborationCacheKey } from '../../prototype/collaborationPolicy'
+import { currentUserName, readDefaultUserName, rememberFixerName, defaultFixerName } from '../../prototype/personNameMemory'
 import { ossPreviewUrl, ossUploadEnabled, uploadImageToOss } from './ossClient'
 import { bugIdExists, normalizeBugId } from './bugPolicy'
 import { exportBugsExcel } from './exportBugs'
@@ -65,7 +66,6 @@ const sortOptions = [
 const pageSizeOptions = [10, 20, 50, 100] as const
 type BugSortKey = (typeof sortOptions)[number]['value']
 type BugPageSize = (typeof pageSizeOptions)[number]
-const DEFAULT_USER_STORAGE_KEY = 'prototype-core-annotation-author'
 const BUG_SUBMISSION_DRAFT_VERSION = 1 as const
 const MAX_PENDING_IMAGES = 10
 const deleteBugCode = getPrototypeRuntime().tools?.bugDeleteCode?.trim() ?? ''
@@ -100,24 +100,6 @@ interface StoredBugSubmissionDraft {
   form: BugSubmissionForm
   attachments: ProductBugAttachment[]
   updatedAt: string
-}
-
-function readDefaultUserName() {
-  try {
-    return window.localStorage.getItem(DEFAULT_USER_STORAGE_KEY)?.trim() ?? ''
-  } catch {
-    return ''
-  }
-}
-
-function saveDefaultUserName(value: string) {
-  const next = value.trim()
-  if (!next) return
-  try {
-    window.localStorage.setItem(DEFAULT_USER_STORAGE_KEY, next)
-  } catch {
-    // 本地默认用户仅用于协作提效，写入失败不影响 Bug 提交。
-  }
 }
 
 const submitForm = reactive<BugSubmissionForm>({
@@ -288,6 +270,7 @@ function clearSubmissionDraft() {
 const restoredSubmissionDraft = readSubmissionDraft()
 if (restoredSubmissionDraft) {
   Object.assign(submitForm, restoredSubmissionDraft.form)
+  submitForm.reporterName = restoredSubmissionDraft.form.reporterName.trim() || readDefaultUserName()
   submissionId.value = restoredSubmissionDraft.submissionId
   uploadedSubmitAttachments.value = restoredSubmissionDraft.attachments
   pendingImages.value = restoredSubmissionDraft.attachments.map((attachment) => ({
@@ -306,6 +289,20 @@ if (restoredSubmissionDraft) {
 
 watch(submitForm, saveSubmissionDraft, { deep: true })
 watch(uploadedSubmitAttachments, saveSubmissionDraft, { deep: true })
+
+let reporterNameEdited = Boolean(restoredSubmissionDraft?.form.reporterName.trim())
+let operatorNameEdited = false
+
+function rememberUserInput(field: 'reporter' | 'operator', value: string) {
+  if (field === 'reporter') reporterNameEdited = true
+  else operatorNameEdited = true
+  currentUserName.value = value
+}
+
+watch(currentUserName, () => {
+  if (!reporterNameEdited && !hasSubmissionDraftContent()) submitForm.reporterName = readDefaultUserName()
+  if (selectedBugLocator.value && !operatorNameEdited) statusForm.operatorName = readDefaultUserName()
+}, { flush: 'sync' })
 
 function hasSameBugIdentity(bug: ProductBug, locator: Omit<BugLocator, 'occurrence'>) {
   return bug.id === locator.id
@@ -602,12 +599,13 @@ async function submitBug() {
   }
   clearPendingImages()
   clearSubmissionDraft()
-  saveDefaultUserName(reporterName)
-  submitForm.reporterName = reporterName
+  reporterNameEdited = false
+  submitForm.reporterName = readDefaultUserName()
   submitForm.title = ''
   submitForm.sourceSideVersion = sourceSideVersion
   submitForm.description = ''
-  selectedBugLocator.value = committedBugLocator
+  const committedIndex = committedBugLocator ? findBugIndex(bugs.value, committedBugLocator) : -1
+  if (committedIndex >= 0) openBug(bugs.value[committedIndex]!)
 }
 
 onBeforeUnmount(() => {
@@ -632,8 +630,9 @@ function openBug(bug: ProductBug) {
   clearPendingImages()
   imageNotice.value = ''
   statusForm.status = bug.status === '待处理' ? '已确认' : bug.status
+  operatorNameEdited = false
   statusForm.operatorName = defaultUserName
-  statusForm.fixerName = bug.fixerName ?? defaultUserName
+  statusForm.fixerName = defaultFixerName(bug.fixerName)
   statusForm.note = ''
   statusError.value = ''
 }
@@ -819,7 +818,6 @@ async function updateBugStatus() {
     statusError.value = bugSyncMessage.value || 'Bug 状态修改失败'
     return
   }
-  statusForm.operatorName = readDefaultUserName()
   statusForm.note = ''
 }
 
@@ -910,7 +908,7 @@ async function handleExportBugs() {
         </div>
         <label>
           <span>提报人姓名</span>
-          <input v-model="submitForm.reporterName" type="text" placeholder="请输入姓名" />
+          <input v-model="submitForm.reporterName" type="text" placeholder="请输入姓名" @input="rememberUserInput('reporter', ($event.target as HTMLInputElement).value)" />
         </label>
         <label>
           <span>标题</span>
@@ -1256,11 +1254,11 @@ async function handleExportBugs() {
           <div class="bug-form-row">
             <label>
               <span>操作人姓名</span>
-              <input v-model="statusForm.operatorName" type="text" placeholder="必填" />
+              <input v-model="statusForm.operatorName" type="text" placeholder="必填" @input="rememberUserInput('operator', ($event.target as HTMLInputElement).value)" />
             </label>
             <label>
               <span>修复人姓名</span>
-              <input v-model="statusForm.fixerName" type="text" :placeholder="statusForm.status === '已修复' ? '已修复时必填' : '选填'" />
+              <input v-model="statusForm.fixerName" type="text" :placeholder="statusForm.status === '已修复' ? '已修复时必填' : '选填'" @input="rememberFixerName(($event.target as HTMLInputElement).value)" />
             </label>
           </div>
           <label>
