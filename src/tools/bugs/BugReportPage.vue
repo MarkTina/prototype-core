@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { AlertTriangle, Bug, CheckCircle2, CircleDot, FileSpreadsheet, Filter, ImagePlus, Plus, RefreshCw, Search, Trash2, X } from '@lucide/vue'
+import { AlertTriangle, Bug, CheckCircle2, ChevronLeft, ChevronRight, CircleDot, FileSpreadsheet, Filter, ImagePlus, Minus, Plus, RefreshCw, RotateCcw, Search, Trash2, X } from '@lucide/vue'
 import { useProductBugs } from './useProductBugs'
 import { getPrototypeRuntime } from '../../core/productAdapter'
 import { getCollaborationContext } from '../../prototype/collaborationStore'
@@ -166,13 +166,90 @@ const exportingBugs = ref(false)
 const exportNotice = ref('')
 const exportNoticeTone = ref<'success' | 'error'>('success')
 const activeImagePreview = ref<ProductBugAttachment | null>(null)
+const previewAttachments = ref<ProductBugAttachment[]>([])
+const previewIndex = ref(0)
+const previewZoom = ref(1)
+const previewOffset = reactive({ x: 0, y: 0 })
+const previewDrag = ref<{ pointerId: number; x: number; y: number } | null>(null)
 const ossReady = ossUploadEnabled()
 
 function handleImagePreviewKeydown(event: KeyboardEvent) {
-  if (event.key !== 'Escape' || !activeImagePreview.value) return
+  if (!activeImagePreview.value) return
+  if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+    event.preventDefault()
+    event.stopPropagation()
+    changePreviewImage(event.key === 'ArrowLeft' ? -1 : 1)
+    return
+  }
+  if (event.key !== 'Escape') return
   event.preventDefault()
   event.stopPropagation()
+  closeImagePreview()
+}
+
+function openImagePreview(attachments: ProductBugAttachment[], index: number) {
+  previewAttachments.value = attachments
+  previewIndex.value = index
+  activeImagePreview.value = attachments[index] ?? null
+  resetPreviewZoom()
+}
+
+function closeImagePreview() {
   activeImagePreview.value = null
+  previewAttachments.value = []
+  previewDrag.value = null
+}
+
+function resetPreviewZoom() {
+  previewZoom.value = 1
+  previewOffset.x = 0
+  previewOffset.y = 0
+  previewDrag.value = null
+}
+
+function changePreviewImage(direction: number) {
+  const next = previewIndex.value + direction
+  if (next < 0 || next >= previewAttachments.value.length) return
+  previewIndex.value = next
+  activeImagePreview.value = previewAttachments.value[next] ?? null
+  resetPreviewZoom()
+}
+
+function changePreviewZoom(direction: number) {
+  previewZoom.value = Math.min(4, Math.max(0.5, Math.round((previewZoom.value + direction * 0.25) * 100) / 100))
+  if (previewZoom.value <= 1) {
+    previewOffset.x = 0
+    previewOffset.y = 0
+  }
+}
+
+function handlePreviewWheel(event: WheelEvent) {
+  changePreviewZoom(event.deltaY < 0 ? 1 : -1)
+}
+
+function startPreviewDrag(event: PointerEvent) {
+  if (previewZoom.value <= 1) return
+  previewDrag.value = { pointerId: event.pointerId, x: event.clientX, y: event.clientY }
+  ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+}
+
+function movePreviewDrag(event: PointerEvent) {
+  const drag = previewDrag.value
+  if (!drag || drag.pointerId !== event.pointerId) return
+  previewOffset.x += event.clientX - drag.x
+  previewOffset.y += event.clientY - drag.y
+  drag.x = event.clientX
+  drag.y = event.clientY
+}
+
+function stopPreviewDrag() {
+  previewDrag.value = null
+}
+
+function scrollImageStrip(event: MouseEvent, direction: number) {
+  const strip = (event.currentTarget as HTMLElement).parentElement?.querySelector<HTMLElement>('.bug-list-images-strip')
+  if (!strip) return
+  strip.scrollBy({ left: direction * strip.clientWidth, behavior: 'smooth' })
 }
 
 function createSubmissionId(): string {
@@ -1066,10 +1143,14 @@ async function handleExportBugs() {
               <h2>{{ bug.title }}</h2>
               <p>{{ bug.description }}</p>
               <div v-if="bug.attachments?.length" class="bug-list-images">
-                <button v-for="attachment in bug.attachments.slice(0, 3)" :key="attachment.id" type="button" @click="activeImagePreview = attachment">
-                  <img :src="ossPreviewUrl(attachment.url)" :alt="attachment.name" loading="lazy" />
-                </button>
-                <span v-if="bug.attachments.length > 3">+{{ bug.attachments.length - 3 }}</span>
+                <button v-if="bug.attachments.length > 1" class="bug-list-images-nav" type="button" aria-label="向左切换截图" @click="scrollImageStrip($event, -1)"><ChevronLeft class="h-4 w-4" /></button>
+                <div class="bug-list-images-strip">
+                  <button v-for="(attachment, index) in bug.attachments" :key="attachment.id" type="button" :aria-label="`查看截图 ${index + 1}：${attachment.name}`" @click="openImagePreview(bug.attachments, index)">
+                    <img :src="ossPreviewUrl(attachment.url)" :alt="attachment.name" loading="lazy" />
+                  </button>
+                </div>
+                <button v-if="bug.attachments.length > 1" class="bug-list-images-nav" type="button" aria-label="向右切换截图" @click="scrollImageStrip($event, 1)"><ChevronRight class="h-4 w-4" /></button>
+                <span>{{ bug.attachments.length }} 张</span>
               </div>
               <small>提报人：{{ bug.reporterName }} · {{ formatTime(bug.createdAt) }}<template v-if="bug.fixerName"> · 修复人：{{ bug.fixerName }}</template></small>
             </div>
@@ -1195,7 +1276,7 @@ async function handleExportBugs() {
             </button>
             <div v-if="editAttachments.length" class="bug-edit-existing-images">
               <article v-for="attachment in editAttachments" :key="attachment.id">
-                <button type="button" class="bug-edit-image-preview" @click="activeImagePreview = attachment">
+                <button type="button" class="bug-edit-image-preview" @click="openImagePreview(editAttachments, editAttachments.indexOf(attachment))">
                   <img :src="ossPreviewUrl(attachment.url)" :alt="attachment.name" loading="lazy" />
                 </button>
                 <div>
@@ -1233,7 +1314,7 @@ async function handleExportBugs() {
         <section v-if="!isEditingBug && selectedBug.attachments?.length" class="bug-detail-images">
           <h3>问题截图</h3>
           <div>
-            <button v-for="attachment in selectedBug.attachments" :key="attachment.id" type="button" @click="activeImagePreview = attachment">
+            <button v-for="(attachment, index) in selectedBug.attachments" :key="attachment.id" type="button" @click="openImagePreview(selectedBug.attachments, index)">
               <img :src="ossPreviewUrl(attachment.url)" :alt="attachment.name" loading="lazy" />
               <span>{{ attachment.name }}</span>
             </button>
@@ -1281,13 +1362,24 @@ async function handleExportBugs() {
         </section>
       </aside>
     </div>
-    <div v-if="activeImagePreview" class="bug-image-preview-backdrop" @click.self="activeImagePreview = null">
+    <div v-if="activeImagePreview" class="bug-image-preview-backdrop" @click.self="closeImagePreview">
       <section class="bug-image-preview-dialog">
-        <div>
+        <div class="bug-image-preview-toolbar">
           <p>{{ activeImagePreview.name }}</p>
-          <button type="button" aria-label="关闭图片预览" @click="activeImagePreview = null"><X class="h-5 w-5" /></button>
+          <span>{{ previewIndex + 1 }} / {{ previewAttachments.length }}</span>
+          <div class="bug-image-preview-controls">
+            <button type="button" aria-label="缩小图片" title="缩小图片" :disabled="previewZoom <= 0.5" @click="changePreviewZoom(-1)"><Minus class="h-4 w-4" /></button>
+            <span>{{ Math.round(previewZoom * 100) }}%</span>
+            <button type="button" aria-label="放大图片" title="放大图片" :disabled="previewZoom >= 4" @click="changePreviewZoom(1)"><Plus class="h-4 w-4" /></button>
+            <button type="button" aria-label="重置缩放" title="重置缩放" @click="resetPreviewZoom"><RotateCcw class="h-4 w-4" /></button>
+            <button type="button" aria-label="关闭图片预览" title="关闭图片预览" @click="closeImagePreview"><X class="h-5 w-5" /></button>
+          </div>
         </div>
-        <img :src="activeImagePreview.url" :alt="activeImagePreview.name" />
+        <div class="bug-image-preview-stage" @wheel.prevent="handlePreviewWheel" @pointerdown="startPreviewDrag" @pointermove="movePreviewDrag" @pointerup="stopPreviewDrag" @pointercancel="stopPreviewDrag" @lostpointercapture="stopPreviewDrag">
+          <button v-if="previewAttachments.length > 1" class="bug-image-preview-nav is-previous" type="button" aria-label="上一张截图" title="上一张截图" :disabled="previewIndex === 0" @click="changePreviewImage(-1)"><ChevronLeft class="h-5 w-5" /></button>
+          <img :src="activeImagePreview.url" :alt="activeImagePreview.name" draggable="false" :class="{ 'is-draggable': previewZoom > 1, 'is-dragging': previewDrag }" :style="{ transform: `translate(${previewOffset.x}px, ${previewOffset.y}px) scale(${previewZoom})` }" />
+          <button v-if="previewAttachments.length > 1" class="bug-image-preview-nav is-next" type="button" aria-label="下一张截图" title="下一张截图" :disabled="previewIndex === previewAttachments.length - 1" @click="changePreviewImage(1)"><ChevronRight class="h-5 w-5" /></button>
+        </div>
       </section>
     </div>
   </main>
