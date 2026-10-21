@@ -3,6 +3,31 @@ import { collaborationBranchKey, collaborationCacheKey, upsertScopedCache, witho
 import { getPrototypeRuntime } from '../core/productAdapter'
 
 const CACHE_SCHEMA_VERSION = 3 as const
+const sessionCache = new Map<string, string | null>()
+
+function readStored(key: string) {
+  if (sessionCache.has(key)) return sessionCache.get(key) ?? null
+  try {
+    return storage()?.getItem(key) ?? null
+  } catch {
+    return null
+  }
+}
+
+function writeStored<T extends { persistence?: 'persistent' | 'session' }>(key: string, value: T) {
+  value.persistence = 'persistent'
+  try {
+    const target = storage()
+    if (!target) throw new Error('浏览器存储不可用')
+    target.setItem(key, JSON.stringify(value))
+    sessionCache.delete(key)
+  } catch {
+    value.persistence = 'session'
+    sessionCache.set(key, JSON.stringify(value))
+    console.warn('⚠️ [协作缓存] 浏览器存储不可用，修改仅保留在本次会话，刷新后可能丢失')
+  }
+  return value
+}
 
 export interface CollaborationContext {
   provider: string
@@ -57,7 +82,7 @@ function cacheKey(kind: CollaborationDataKind | 'bugs') {
 
 export function readCollaborationCache<T>(kind: CollaborationDataKind | 'bugs'): CollaborationCacheSnapshot<T> | null {
   try {
-    const value = JSON.parse(storage()?.getItem(cacheKey(kind)) ?? 'null') as CollaborationCacheSnapshot<T> | null
+    const value = JSON.parse(readStored(cacheKey(kind)) ?? 'null') as CollaborationCacheSnapshot<T> | null
     return value?.schemaVersion === CACHE_SCHEMA_VERSION && 'value' in value ? value : null
   } catch {
     return null
@@ -71,7 +96,9 @@ export function writeCollaborationCache<T>(
   lastRemoteSyncAt: string | null,
   status: CollaborationCacheStatus = lastRemoteSyncAt ? 'synced' : 'pending',
   error?: string,
+  baseRevision?: string | null,
 ) {
+  const previous = readCollaborationCache<T>(kind)
   const snapshot: CollaborationCacheSnapshot<T> = {
     schemaVersion: CACHE_SCHEMA_VERSION,
     value,
@@ -79,17 +106,17 @@ export function writeCollaborationCache<T>(
     cachedAt: new Date().toISOString(),
     lastRemoteSyncAt,
     status,
+    baseRevision: status === 'pending' ? baseRevision !== undefined ? baseRevision : previous?.status === 'pending' ? previous.baseRevision !== undefined ? previous.baseRevision : previous.revision : revision : revision,
     ...(error ? { error } : {}),
   }
-  storage()?.setItem(cacheKey(kind), JSON.stringify(snapshot))
-  return snapshot
+  return writeStored(cacheKey(kind), snapshot)
 }
 
 export function migrateFileCollaborationCache<T>(kind: 'flows' | 'bugs'): CollaborationCacheSnapshot<T> | null {
   const current = readCollaborationCache<T>(kind)
   if (current) return current
   try {
-    const legacy = JSON.parse(storage()?.getItem(cacheKey(kind)) ?? 'null') as unknown
+    const legacy = JSON.parse(readStored(cacheKey(kind)) ?? 'null') as unknown
     const value = kind === 'bugs' && Array.isArray(legacy)
       ? legacy as T
       : legacy && typeof legacy === 'object' && (legacy as { schemaVersion?: number }).schemaVersion === 2
@@ -104,7 +131,7 @@ export function migrateFileCollaborationCache<T>(kind: 'flows' | 'bugs'): Collab
 
 export function readLegacyCollaborationCache<T>(kind: CollaborationDataKind | 'bugs') {
   try {
-    const value = JSON.parse(storage()?.getItem(cacheKey(kind)) ?? 'null') as { schemaVersion?: number; value?: T; revision?: string | null; lastRemoteSyncAt?: string | null } | null
+    const value = JSON.parse(readStored(cacheKey(kind)) ?? 'null') as { schemaVersion?: number; value?: T; revision?: string | null; lastRemoteSyncAt?: string | null } | null
     return value?.schemaVersion === 2 && 'value' in value ? value : null
   } catch {
     return null
@@ -113,8 +140,11 @@ export function readLegacyCollaborationCache<T>(kind: CollaborationDataKind | 'b
 
 export function readScopedCollaborationCache<T>(kind: 'annotations' | 'pageDescriptions' | 'testCases'): ScopedCollaborationCacheSnapshot<T> {
   try {
-    const value = JSON.parse(storage()?.getItem(cacheKey(kind)) ?? 'null') as ScopedCollaborationCacheSnapshot<T> | null
-    if (value?.schemaVersion === CACHE_SCHEMA_VERSION && value.scopes && !('value' in value)) return value
+    const value = JSON.parse(readStored(cacheKey(kind)) ?? 'null') as ScopedCollaborationCacheSnapshot<T> | null
+    if (value?.schemaVersion === CACHE_SCHEMA_VERSION && value.scopes && !('value' in value)) {
+      Object.values(value.scopes).forEach((entry) => { entry.persistence = value.persistence ?? 'persistent' })
+      return value
+    }
   } catch {
     // 无效缓存按空缓存处理。
   }
@@ -123,7 +153,7 @@ export function readScopedCollaborationCache<T>(kind: 'annotations' | 'pageDescr
 
 export function replaceScopedCollaborationCache<T>(kind: 'annotations' | 'pageDescriptions' | 'testCases', scopes: Record<string, CollaborationCacheEntry<T>>) {
   const snapshot: ScopedCollaborationCacheSnapshot<T> = { schemaVersion: CACHE_SCHEMA_VERSION, scopes }
-  storage()?.setItem(cacheKey(kind), JSON.stringify(snapshot))
+  writeStored(cacheKey(kind), snapshot)
   return snapshot
 }
 
@@ -135,21 +165,26 @@ export function writeScopedCollaborationCache<T>(
   lastRemoteSyncAt: string | null,
   status: CollaborationCacheStatus = lastRemoteSyncAt ? 'synced' : 'pending',
   error?: string,
+  baseRevision?: string | null,
 ) {
   const snapshot = readScopedCollaborationCache<T>(kind)
+  const previous = snapshot.scopes[scopeId]
   const next = upsertScopedCache(snapshot, scopeId, {
     value,
     revision,
     cachedAt: new Date().toISOString(),
     lastRemoteSyncAt,
     status,
+    baseRevision: status === 'pending' ? baseRevision !== undefined ? baseRevision : previous?.status === 'pending' ? previous.baseRevision !== undefined ? previous.baseRevision : previous.revision : revision : revision,
     ...(error ? { error } : {}),
   })
-  storage()?.setItem(cacheKey(kind), JSON.stringify(next))
+  writeStored(cacheKey(kind), next)
+  next.scopes[scopeId].persistence = next.persistence
+  if (sessionCache.has(cacheKey(kind))) sessionCache.set(cacheKey(kind), JSON.stringify(next))
   return next.scopes[scopeId]
 }
 
 export function removeScopedCollaborationCache(kind: 'annotations' | 'pageDescriptions' | 'testCases', scopeId: string) {
   const snapshot = withoutScopedCache(readScopedCollaborationCache(kind), scopeId)
-  storage()?.setItem(cacheKey(kind), JSON.stringify(snapshot))
+  writeStored(cacheKey(kind), snapshot)
 }

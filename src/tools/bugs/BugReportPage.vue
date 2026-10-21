@@ -162,6 +162,10 @@ const editAttachments = ref<ProductBugAttachment[]>([])
 const imageInputRef = ref<HTMLInputElement | null>(null)
 const pendingImages = ref<PendingBugImage[]>([])
 const imageNotice = ref('')
+const statusImageInputRef = ref<HTMLInputElement | null>(null)
+const statusPendingImages = ref<PendingBugImage[]>([])
+const statusImageNotice = ref('')
+const statusSubmitting = ref(false)
 const exportingBugs = ref(false)
 const exportNotice = ref('')
 const exportNoticeTone = ref<'success' | 'error'>('success')
@@ -521,62 +525,77 @@ async function prepareImageFile(file: File): Promise<PendingBugImage> {
   }
 }
 
-async function addImageFiles(files: File[]) {
-  imageNotice.value = ''
+async function addImageFiles(files: File[], forStatus = false) {
+  if (forStatus && (statusSubmitting.value || isEditingBug.value || isConfirmingDelete.value || bugSyncStatus.value === 'loading')) return
+  const images = forStatus ? statusPendingImages : pendingImages
+  const notice = forStatus ? statusImageNotice : imageNotice
+  notice.value = ''
+  if (forStatus && !ossReady) {
+    notice.value = '未配置图片上传服务，可仅填写备注并提交状态变更'
+    return
+  }
   const imageFiles = files.filter((file) => file.type.startsWith('image/'))
   if (!imageFiles.length) return
-  const existingCount = isEditingBug.value ? editAttachments.value.length : 0
-  const available = MAX_PENDING_IMAGES - pendingImages.value.length - existingCount
+  const existingCount = !forStatus && isEditingBug.value ? editAttachments.value.length : 0
+  const available = MAX_PENDING_IMAGES - images.value.length - existingCount
   if (available <= 0) {
-    imageNotice.value = `每个 Bug 最多上传 ${MAX_PENDING_IMAGES} 张图片`
+    notice.value = forStatus ? `每次状态变更最多上传 ${MAX_PENDING_IMAGES} 张备注图片` : `每个 Bug 最多上传 ${MAX_PENDING_IMAGES} 张图片`
     return
   }
 
   for (const file of imageFiles.slice(0, available)) {
     try {
-      pendingImages.value = [...pendingImages.value, await prepareImageFile(file)]
+      const image = await prepareImageFile(file)
+      if (images.value.length + existingCount >= MAX_PENDING_IMAGES) {
+        URL.revokeObjectURL(image.previewUrl)
+        notice.value = `已达到 ${MAX_PENDING_IMAGES} 张图片上限`
+        break
+      }
+      images.value = [...images.value, image]
     } catch (error) {
-      imageNotice.value = error instanceof Error ? error.message : '图片处理失败'
+      notice.value = error instanceof Error ? error.message : '图片处理失败'
     }
   }
-  if (imageFiles.length > available) imageNotice.value = `已达到 ${MAX_PENDING_IMAGES} 张图片上限`
+  if (imageFiles.length > available) notice.value = `已达到 ${MAX_PENDING_IMAGES} 张图片上限`
 }
 
-function handleImageInput(event: Event) {
+function handleImageInput(event: Event, forStatus = false) {
   const input = event.target as HTMLInputElement
-  void addImageFiles(Array.from(input.files ?? []))
+  void addImageFiles(Array.from(input.files ?? []), forStatus)
   input.value = ''
 }
 
-function handlePaste(event: ClipboardEvent) {
+function handlePaste(event: ClipboardEvent, forStatus = false) {
   const files = Array.from(event.clipboardData?.items ?? [])
     .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
     .map((item) => item.getAsFile())
     .filter((file): file is File => Boolean(file))
   if (!files.length) return
   event.preventDefault()
-  void addImageFiles(files)
+  void addImageFiles(files, forStatus)
 }
 
-function removePendingImage(id: string) {
-  const target = pendingImages.value.find((image) => image.id === id)
+function removePendingImage(id: string, forStatus = false) {
+  if (forStatus && statusSubmitting.value) return
+  const images = forStatus ? statusPendingImages : pendingImages
+  const target = images.value.find((image) => image.id === id)
   if (target) URL.revokeObjectURL(target.previewUrl)
-  if (target?.uploadedAttachment && !isEditingBug.value) {
+  if (target?.uploadedAttachment && !forStatus && !isEditingBug.value) {
     uploadedSubmitAttachments.value = uploadedSubmitAttachments.value.filter((attachment) => attachment.id !== target.uploadedAttachment?.id)
   }
-  pendingImages.value = pendingImages.value.filter((image) => image.id !== id)
+  images.value = images.value.filter((image) => image.id !== id)
 }
 
 function removeEditAttachment(id: string) {
   editAttachments.value = editAttachments.value.filter((attachment) => attachment.id !== id)
 }
 
-async function uploadPendingImages(scopeId: string, uploaderName: string) {
-  if (!pendingImages.value.length) return []
+async function uploadPendingImages(scopeId: string, uploaderName: string, images = pendingImages.value) {
+  if (!images.length) return []
   if (!ossReady) throw new Error('缺少 OSS 上传配置，无法上传图片')
   const attachments: ProductBugAttachment[] = []
 
-  for (const image of pendingImages.value) {
+  for (const image of images) {
     if (image.uploadedAttachment) {
       attachments.push(image.uploadedAttachment)
       continue
@@ -611,6 +630,12 @@ async function uploadPendingImages(scopeId: string, uploaderName: string) {
 function clearPendingImages() {
   pendingImages.value.forEach((image) => URL.revokeObjectURL(image.previewUrl))
   pendingImages.value = []
+}
+
+function clearStatusImages() {
+  statusPendingImages.value.forEach((image) => URL.revokeObjectURL(image.previewUrl))
+  statusPendingImages.value = []
+  statusImageNotice.value = ''
 }
 
 async function submitBug() {
@@ -689,6 +714,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleImagePreviewKeydown, true)
   saveSubmissionDraft()
   clearPendingImages()
+  clearStatusImages()
 })
 
 onMounted(() => {
@@ -696,6 +722,8 @@ onMounted(() => {
 })
 
 function openBug(bug: ProductBug) {
+  if (statusSubmitting.value) return
+  clearStatusImages()
   const defaultUserName = readDefaultUserName()
   selectedBugLocator.value = createBugLocator(bug)
   isEditingBug.value = false
@@ -715,6 +743,8 @@ function openBug(bug: ProductBug) {
 }
 
 function closeDetail() {
+  if (statusSubmitting.value) return
+  clearStatusImages()
   selectedBugLocator.value = null
   isEditingBug.value = false
   editError.value = ''
@@ -727,6 +757,7 @@ function closeDetail() {
 }
 
 function startBugEdit() {
+  if (statusSubmitting.value) return
   const bug = selectedBug.value
   if (!bug || !canStartBugEdit.value) return
   isConfirmingDelete.value = false
@@ -756,6 +787,7 @@ function cancelBugEdit() {
 }
 
 function startDeleteBug() {
+  if (statusSubmitting.value) return
   isEditingBug.value = false
   editError.value = ''
   editAttachments.value = []
@@ -850,6 +882,7 @@ async function saveBugEdit() {
 }
 
 async function updateBugStatus() {
+  if (statusSubmitting.value || isEditingBug.value || isConfirmingDelete.value || bugSyncStatus.value === 'loading') return
   statusError.value = ''
   const bug = selectedBug.value
   const locator = selectedBugLocator.value
@@ -865,37 +898,49 @@ async function updateBugStatus() {
     return
   }
 
-  const now = new Date().toISOString()
-  const nextHistory = {
-    id: `bug-history-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    fromStatus: bug.status,
-    toStatus: statusForm.status,
-    operatorName,
-    fixerName: fixerName || undefined,
-    note: statusForm.note.trim() || undefined,
-    createdAt: now,
-  }
+  const toStatus = statusForm.status
+  const note = statusForm.note.trim() || undefined
+  statusSubmitting.value = true
+  try {
+    const attachments = await uploadPendingImages(bug.id, operatorName, [...statusPendingImages.value])
+    const now = new Date().toISOString()
+    const nextHistory = {
+      id: `bug-history-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      fromStatus: bug.status,
+      toStatus,
+      operatorName,
+      fixerName: fixerName || undefined,
+      note,
+      ...(attachments.length ? { attachments } : {}),
+      createdAt: now,
+    }
 
-  const saved = await persistBugs(operatorName, '变更 Bug 状态', (current) => {
-    const targetIndex = findBugIndex(current, locator)
-    if (targetIndex < 0) throw new Error('目标 Bug 已变化，请刷新后重试')
-    return current.map((item, index) =>
-      index === targetIndex
-        ? {
-            ...item,
-            status: statusForm.status,
-            fixerName: fixerName || item.fixerName,
-            updatedAt: now,
-            history: [nextHistory, ...item.history],
-          }
-        : item,
-    )
-  })
-  if (!saved) {
-    statusError.value = bugSyncMessage.value || 'Bug 状态修改失败'
-    return
+    const saved = await persistBugs(operatorName, '变更 Bug 状态', (current) => {
+      const targetIndex = findBugIndex(current, locator)
+      if (targetIndex < 0) throw new Error('目标 Bug 已变化，请刷新后重试')
+      return current.map((item, index) =>
+        index === targetIndex
+          ? {
+              ...item,
+              status: toStatus,
+              fixerName: fixerName || item.fixerName,
+              updatedAt: now,
+              history: [nextHistory, ...item.history],
+            }
+          : item,
+      )
+    })
+    if (!saved) {
+      statusError.value = bugSyncMessage.value || 'Bug 状态修改失败'
+      return
+    }
+    statusForm.note = ''
+    clearStatusImages()
+  } catch (error) {
+    statusError.value = error instanceof Error ? error.message : '备注图片上传失败，状态变更未保存'
+  } finally {
+    statusSubmitting.value = false
   }
-  statusForm.note = ''
 }
 
 async function handleExportBugs() {
@@ -1176,7 +1221,7 @@ async function handleExportBugs() {
             <span>#{{ selectedBug.id }}</span>
             <h2>{{ selectedBug.title }}</h2>
           </div>
-          <button type="button" aria-label="关闭详情" @click="closeDetail"><X class="h-5 w-5" /></button>
+          <button type="button" aria-label="关闭详情" :disabled="statusSubmitting" @click="closeDetail"><X class="h-5 w-5" /></button>
         </div>
         <div class="bug-detail-summary">
           <span>{{ selectedBug.type }}</span>
@@ -1188,10 +1233,10 @@ async function handleExportBugs() {
         </div>
         <div class="bug-detail-actions">
           <div>
-            <button v-if="canStartBugEdit && !isEditingBug" class="bug-edit-entry-btn" type="button" @click="startBugEdit">编辑 Bug</button>
+            <button v-if="canStartBugEdit && !isEditingBug" class="bug-edit-entry-btn" type="button" :disabled="statusSubmitting" @click="startBugEdit">编辑 Bug</button>
             <span v-else-if="!canStartBugEdit">已完结 Bug 不支持编辑</span>
           </div>
-          <button v-if="!isEditingBug" class="bug-delete-entry-btn" type="button" @click="startDeleteBug">
+          <button v-if="!isEditingBug" class="bug-delete-entry-btn" type="button" :disabled="statusSubmitting" @click="startDeleteBug">
             <Trash2 class="h-4 w-4" />
             删除 Bug
           </button>
@@ -1321,7 +1366,8 @@ async function handleExportBugs() {
           </div>
         </section>
 
-        <form class="bug-status-form" @submit.prevent="updateBugStatus">
+        <form class="bug-status-form" @submit.prevent="updateBugStatus" @paste="handlePaste($event, true)">
+          <fieldset class="bug-status-fields" :disabled="statusSubmitting || isEditingBug || isConfirmingDelete || bugSyncStatus === 'loading'">
           <div class="bug-section-title">
             <CircleDot class="h-4 w-4" />
             <span>状态变更</span>
@@ -1346,8 +1392,35 @@ async function handleExportBugs() {
             <span>备注</span>
             <textarea v-model="statusForm.note" placeholder="说明修复内容、验证结论或无需处理原因" />
           </label>
+          <section class="bug-image-uploader">
+            <div class="bug-section-title">
+              <ImagePlus class="h-4 w-4" />
+              <span>备注图片（选填）</span>
+            </div>
+            <button class="bug-image-picker" type="button" :disabled="!ossReady || statusPendingImages.length >= MAX_PENDING_IMAGES" @click="statusImageInputRef?.click()">
+              添加图片 / 粘贴截图
+            </button>
+            <input ref="statusImageInputRef" class="hidden" type="file" accept="image/png,image/jpeg,image/webp" multiple @change="handleImageInput($event, true)" />
+            <p class="bug-image-hint">支持 png、jpg、webp；每次最多 10 张；不上传图片也可提交。</p>
+            <p v-if="!ossReady" class="bug-image-hint">未配置图片上传服务，可仅填写备注并提交状态变更。</p>
+            <div v-if="statusPendingImages.length" class="bug-pending-images">
+              <article v-for="image in statusPendingImages" :key="image.id" :class="`is-${image.status}`">
+                <img :src="image.previewUrl" :alt="image.name" />
+                <div>
+                  <b>{{ image.name }}</b>
+                  <span>{{ formatFileSize(image.size) }}</span>
+                  <small v-if="image.error">{{ image.error }}</small>
+                </div>
+                <button type="button" aria-label="移除备注图片" :disabled="statusSubmitting" @click="removePendingImage(image.id, true)">
+                  <Trash2 class="h-4 w-4" />
+                </button>
+              </article>
+            </div>
+            <p v-if="statusImageNotice" class="bug-form-error">{{ statusImageNotice }}</p>
+          </section>
           <p v-if="statusError" class="bug-form-error">{{ statusError }}</p>
-          <button class="bug-primary-btn" type="submit" :disabled="bugSyncStatus === 'loading'">提交状态变更</button>
+          <button class="bug-primary-btn" type="submit">{{ statusSubmitting ? '正在提交…' : '提交状态变更' }}</button>
+          </fieldset>
         </form>
 
         <section class="bug-history">
@@ -1358,6 +1431,14 @@ async function handleExportBugs() {
             <span>{{ entry.operatorName }} · {{ formatTime(entry.createdAt) }}</span>
             <p v-if="entry.fixerName">修复人：{{ entry.fixerName }}</p>
             <p v-if="entry.note">{{ entry.note }}</p>
+            <div v-if="entry.attachments?.length" class="bug-history-images">
+              <span>备注图片</span>
+              <div>
+                <button v-for="(attachment, index) in entry.attachments" :key="attachment.id" type="button" :aria-label="`查看备注图片 ${index + 1}：${attachment.name}`" @click="openImagePreview(entry.attachments, index)">
+                  <img :src="ossPreviewUrl(attachment.url)" :alt="attachment.name" loading="lazy" />
+                </button>
+              </div>
+            </div>
           </article>
         </section>
       </aside>

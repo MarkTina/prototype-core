@@ -1064,6 +1064,42 @@
     @apply mt-5 space-y-4 rounded-[16px] border border-line bg-soft/45 p-4;
   }
 
+  .bug-status-fields {
+    display: grid;
+    min-width: 0;
+    gap: var(--ds-spacing-md);
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .bug-history-images > div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--ds-spacing-xs);
+    margin-top: var(--ds-spacing-xs);
+  }
+
+  .bug-history-images button {
+    width: var(--ds-spacing-section);
+    height: var(--ds-spacing-section);
+    overflow: hidden;
+    border: 1px solid var(--ds-color-hairline);
+    border-radius: var(--ds-rounded-sm);
+    background: var(--ds-color-surface-pearl);
+  }
+
+  .bug-history-images button:focus-visible {
+    outline: 2px solid var(--ds-color-primary-focus);
+    outline-offset: 2px;
+  }
+
+  .bug-history-images img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
   .bug-history {
     @apply mt-5 space-y-3;
   }

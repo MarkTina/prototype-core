@@ -1,6 +1,8 @@
 import type { AnnotationManifest, CollaborationDataKind, MainFlow, PrototypeAnnotation, PrototypePageDescription, PrototypeTestCase } from '../types/prototype'
-import { getCollaborationContext } from './collaborationStore'
-import { createSerialQueue, remoteInitializationDecision, selectGiteeFileResponse } from './collaborationPolicy'
+import { getCollaborationContext, readCollaborationCache, readScopedCollaborationCache } from './collaborationStore'
+import { createSerialQueue, remoteInitializationDecision, jsonValuesEqual } from './collaborationPolicy'
+import { CollaborationConflictError, readGiteeJson, writeGiteeJson, validateCollaborationManifest } from './giteeContents.mjs'
+export { CollaborationConflictError } from './giteeContents.mjs'
 
 export interface RemotePayload<T> {
   value: T
@@ -12,31 +14,11 @@ export type AnnotationOperation = '新增' | '编辑' | '删除' | '同步索引
 export type PageDescriptionOperation = '保存' | '同步索引'
 export type TestCaseOperation = '新增' | '编辑' | '删除'
 
-const GITEE_API_BASE = 'https://gitee.com/api/v5'
 const enqueue = createSerialQueue()
-
-export class CollaborationConflictError extends Error {
-  constructor(message = '远端已有更新，请刷新后重试或放弃本地草稿') {
-    super(message)
-    this.name = 'CollaborationConflictError'
-  }
-}
 
 export type RemoteInitializationResult = 'created' | 'unchanged' | 'protected'
 
 export const annotationRemoteEnabled = getCollaborationContext().remoteReadable
-
-function encodePath(path: string) {
-  return path.split('/').map(encodeURIComponent).join('/')
-}
-
-function encodeBase64(value: string) {
-  return btoa(unescape(encodeURIComponent(value)))
-}
-
-function decodeBase64(value: string) {
-  return decodeURIComponent(escape(atob(value.replace(/\s/g, ''))))
-}
 
 function kindPath(kind: CollaborationDataKind) {
   if (kind === 'pageDescriptions') return 'page-descriptions'
@@ -68,59 +50,37 @@ function initializationMarkerPath() {
 async function requestGiteeFile(path: string): Promise<RemotePayload<unknown> | null> {
   const context = getCollaborationContext()
   if (!context.remoteReadable) return null
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const url = new URL(`${GITEE_API_BASE}/repos/${encodeURIComponent(context.owner)}/${encodeURIComponent(context.repo)}/contents/${encodePath(path)}`)
-    url.searchParams.set('access_token', context.token)
-    url.searchParams.set('ref', context.remoteBranch)
-    url.searchParams.set('_ts', `${Date.now()}-${attempt}`)
-    const response = await fetch(url, {
-      cache: 'no-store',
-      headers: { 'Cache-Control': 'no-cache, no-store', Pragma: 'no-cache' },
-    })
-    if (response.status === 304) continue
-    if (response.status === 404) return null
-    if (!response.ok) throw new Error(`读取 Gitee 文件失败：${response.status}`)
-    const payload = await response.json() as unknown
-    const file = selectGiteeFileResponse(payload, path)
-    if (file) return { value: JSON.parse(decodeBase64(file.content)), sha: file.sha, legacy: false }
-    if (Array.isArray(payload)) return null
-    const keys = payload && typeof payload === 'object' ? Object.keys(payload).join(',') || 'empty' : typeof payload
-    throw new Error(`Gitee 文件响应格式异常：${response.status} / ${keys}`)
-  }
-  throw new Error('读取 Gitee 文件失败：304 缓存响应')
+  const file = await readGiteeJson(context, path)
+  return file ? { ...file, legacy: false } : null
 }
 
 async function loadRemote<T>(kind: CollaborationDataKind, scopeId?: string): Promise<RemotePayload<T> | null> {
   const current = await requestGiteeFile(dataPath(kind, scopeId))
-  if (current) return current as RemotePayload<T>
+  if (current) {
+    validateRemoteShape(kind, scopeId, current.value)
+    return current as RemotePayload<T>
+  }
   const context = getCollaborationContext()
   if (context.codeBranch !== 'main') return null
   const fallbackPath = legacyPath(kind, scopeId)
   if (!fallbackPath) return null
   const legacy = await requestGiteeFile(fallbackPath)
+  if (legacy) validateRemoteShape(kind, scopeId, legacy.value)
   return legacy ? { ...legacy, legacy: true } as RemotePayload<T> : null
+}
+
+function validateRemoteShape(kind: CollaborationDataKind, scopeId: string | undefined, value: unknown) {
+  if ((kind === 'annotations' || kind === 'testCases') && scopeId) {
+    if (!Array.isArray(value)) throw new Error('Gitee 协作正文格式无效，预期为数组')
+  } else if (kind !== 'flows' && !scopeId) {
+    validateCollaborationManifest(value)
+  }
 }
 
 async function writeGiteeFile(path: string, value: unknown, sha: string | null, message: string) {
   const context = getCollaborationContext()
   if (!context.remoteWritable) return
-  const url = `${GITEE_API_BASE}/repos/${encodeURIComponent(context.owner)}/${encodeURIComponent(context.repo)}/contents/${encodePath(path)}`
-  const body = new URLSearchParams()
-  body.set('access_token', context.token)
-  body.set('branch', context.remoteBranch)
-  body.set('content', encodeBase64(JSON.stringify(value, null, 2)))
-  body.set('message', message)
-  if (sha) body.set('sha', sha)
-  const response = await fetch(url, {
-    method: sha ? 'PUT' : 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
-    body,
-  })
-  if (response.status === 409 || response.status === 422) throw new CollaborationConflictError()
-  if (!response.ok) {
-    const responseBody = (await response.text()).trim().slice(0, 2000)
-    throw new Error(`提交 Gitee 文件失败：${response.status}${responseBody ? ` / ${responseBody}` : ''}`)
-  }
+  await writeGiteeJson(context, path, value, sha, message)
 }
 
 function commitMessage(scopeId: string, authorName: string, operation: string, kind: CollaborationDataKind) {
@@ -128,11 +88,19 @@ function commitMessage(scopeId: string, authorName: string, operation: string, k
   return [`docs: update ${scopeId} ${label}`, '', `提交人：${authorName}`, `范围：${scopeId}`, `操作：${operation}`].join('\n')
 }
 
-async function saveRemote<T>(kind: CollaborationDataKind, value: T, scopeId: string, authorName: string, operation: string) {
+async function saveRemote<T>(kind: 'pageDescriptions' | 'flows', value: T, scopeId: string, authorName: string, operation: string, expectedRevision?: string | null) {
   return enqueue(`${kind}:${scopeId}`, async () => {
     const current = await requestGiteeFile(dataPath(kind, scopeId || undefined))
+    const existing = current ?? await loadRemote<T>(kind, scopeId || undefined)
+    const cached = kind === 'flows' ? readCollaborationCache(kind) : readScopedCollaborationCache(kind).scopes[scopeId]
+    const baseline = expectedRevision !== undefined ? expectedRevision : cached?.baseRevision !== undefined ? cached.baseRevision : cached?.revision ?? null
+    // 内容相同可恢复索引；有差异时必须核对编辑基线，不能用最新 SHA 替旧草稿解锁。
+    if (existing && jsonValuesEqual(existing.value, value)) return existing as RemotePayload<T>
+    if ((existing?.sha ?? null) !== baseline) throw new CollaborationConflictError()
     await writeGiteeFile(dataPath(kind, scopeId || undefined), value, current?.sha ?? null, commitMessage(scopeId || 'all', authorName, operation, kind))
-    return loadRemote<T>(kind, scopeId || undefined)
+    const saved = await requestGiteeFile(dataPath(kind, scopeId || undefined))
+    if (!saved || !jsonValuesEqual(saved.value, value)) throw new Error('Gitee 写入后精确回读不一致')
+    return saved as RemotePayload<T>
   })
 }
 
@@ -146,8 +114,15 @@ export function ensureRemoteData(
   return enqueue(key, async () => {
     const path = dataPath(kind, scopeId)
     const current = await requestGiteeFile(path)
-    if (current) return remoteInitializationDecision(current.value, value)
+    const existing = current ?? await loadRemote(kind, scopeId)
+    // 旧目录也是可读真值，初始化不能用种子隐式迁移并覆盖它。
+    if (existing) {
+      validateRemoteShape(kind, scopeId, existing.value)
+      return remoteInitializationDecision(existing.value, value)
+    }
     await writeGiteeFile(path, value, null, commitMessage(scopeId ?? 'all', authorName, '初始化', kind))
+    const saved = await requestGiteeFile(path)
+    if (!saved || !jsonValuesEqual(saved.value, value)) throw new Error('Gitee 初始化后精确回读不一致')
     return 'created'
   })
 }
@@ -162,6 +137,8 @@ export function ensureRemoteInitializationMarker(value: unknown, authorName: str
     const current = await requestGiteeFile(path)
     if (current) return remoteInitializationDecision(current.value, value)
     await writeGiteeFile(path, value, null, commitMessage('all', authorName, '初始化完成', 'flows'))
+    const saved = await requestGiteeFile(path)
+    if (!saved || !jsonValuesEqual(saved.value, value)) throw new Error('Gitee 初始化标记回读不一致')
     return 'created' as const
   })
 }
@@ -172,17 +149,26 @@ async function saveManifest(kind: 'annotations' | 'pageDescriptions' | 'testCase
       const current = await requestGiteeFile(dataPath(kind))
       const legacy = !current && getCollaborationContext().codeBranch === 'main' ? await loadRemote<AnnotationManifest>(kind) : null
       const remoteManifest = (current ?? legacy)?.value as AnnotationManifest | undefined
+      if (remoteManifest !== undefined) validateRemoteShape(kind, undefined, remoteManifest)
       const screenId = scopeId.split('__')[0] as keyof AnnotationManifest['screens']
+      const scopes = { ...(remoteManifest?.scopes ?? {}), [scopeId]: manifest.scopes?.[scopeId] ?? { count: 0, updatedAt: new Date().toISOString() } }
+      const count = Object.entries(scopes).reduce((sum, [id, entry]) => sum + (id === screenId || id.startsWith(`${screenId}__`) ? entry.count : 0), 0)
       const next: AnnotationManifest = {
         ...(remoteManifest ?? manifest),
         projectId: manifest.projectId,
         updatedAt: new Date().toISOString(),
-        scopes: { ...(remoteManifest?.scopes ?? {}), [scopeId]: manifest.scopes?.[scopeId] ?? { count: 0, updatedAt: new Date().toISOString() } },
-        screens: { ...(remoteManifest?.screens ?? {}), [screenId]: manifest.screens[screenId] ?? { count: 0, updatedAt: new Date().toISOString() } },
+        scopes,
+        screens: { ...(remoteManifest?.screens ?? {}), [screenId]: { count, updatedAt: new Date().toISOString() } },
+      }
+      const oldEntry = remoteManifest?.scopes?.[scopeId]
+      if (oldEntry && jsonValuesEqual({ ...oldEntry, updatedAt: '' }, { ...scopes[scopeId], updatedAt: '' }) && remoteManifest?.screens[screenId]?.count === count) {
+        return (current ?? legacy) as RemotePayload<AnnotationManifest>
       }
       try {
         await writeGiteeFile(dataPath(kind), next, current?.sha ?? null, commitMessage(scopeId, authorName, '同步索引', kind))
-        return loadRemote<AnnotationManifest>(kind)
+        const saved = await requestGiteeFile(dataPath(kind))
+        if (!saved || !jsonValuesEqual(saved.value, next)) throw new Error('Gitee 索引写入后精确回读不一致')
+        return saved as RemotePayload<AnnotationManifest>
       } catch (error) {
         if (!(error instanceof CollaborationConflictError) || attempt === 1) throw error
       }
@@ -204,14 +190,28 @@ export async function updateRemoteScreenAnnotations(
   authorName: string,
   operation: AnnotationOperation,
   transform: (remoteValue: PrototypeAnnotation[]) => PrototypeAnnotation[],
+  expected?: PrototypeAnnotation[],
 ) {
   return enqueue(`annotations:${scopeId}`, async () => {
     const current = await requestGiteeFile(dataPath('annotations', scopeId))
     const legacy = !current && getCollaborationContext().codeBranch === 'main' ? await loadRemoteScreenAnnotations(scopeId) : null
     const remoteValue = (current ?? legacy)?.value
+    if (remoteValue !== undefined) validateRemoteShape('annotations', scopeId, remoteValue)
+    if (expected) {
+      const desired = transform(expected)
+      const ids = new Set([...expected, ...desired].map((item) => item.id))
+      for (const id of ids) {
+        const before = expected.find((item) => item.id === id)
+        const after = desired.find((item) => item.id === id)
+        const remote = Array.isArray(remoteValue) ? remoteValue.find((item) => item.id === id) : undefined
+        if (!jsonValuesEqual(before, after) && !jsonValuesEqual(remote, after) && !jsonValuesEqual(remote, before)) throw new CollaborationConflictError('该注释已被其他协作者修改，请刷新后处理草稿')
+      }
+    }
     const next = transform(Array.isArray(remoteValue) ? remoteValue as PrototypeAnnotation[] : [])
     await writeGiteeFile(dataPath('annotations', scopeId), next, current?.sha ?? null, commitMessage(scopeId, authorName, operation, 'annotations'))
-    return loadRemoteScreenAnnotations(scopeId)
+    const saved = await requestGiteeFile(dataPath('annotations', scopeId))
+    if (!saved || !jsonValuesEqual(saved.value, next)) throw new Error('注释写入后精确回读不一致')
+    return saved as RemotePayload<PrototypeAnnotation[]>
   })
 }
 
@@ -227,8 +227,8 @@ export function loadRemotePageDescription(scopeId: string) {
   return loadRemote<PrototypePageDescription>('pageDescriptions', scopeId)
 }
 
-export function saveRemotePageDescription(scopeId: string, authorName: string, value: PrototypePageDescription) {
-  return saveRemote('pageDescriptions', value, scopeId, authorName, '保存')
+export function saveRemotePageDescription(scopeId: string, authorName: string, value: PrototypePageDescription, expectedRevision?: string | null) {
+  return saveRemote('pageDescriptions', value, scopeId, authorName, '保存', expectedRevision)
 }
 
 export function saveRemotePageDescriptionManifest(manifest: AnnotationManifest, authorName: string, scopeId: string) {
@@ -252,9 +252,12 @@ export async function updateRemoteTestCases(
   return enqueue(`testCases:${scopeId}`, async () => {
     const current = await requestGiteeFile(dataPath('testCases', scopeId))
     const remoteValue = current?.value
+    if (remoteValue !== undefined) validateRemoteShape('testCases', scopeId, remoteValue)
     const next = transform(Array.isArray(remoteValue) ? remoteValue as PrototypeTestCase[] : [])
     await writeGiteeFile(dataPath('testCases', scopeId), next, current?.sha ?? null, commitMessage(scopeId, authorName, operation, 'testCases'))
-    return loadRemoteTestCases(scopeId)
+    const saved = await requestGiteeFile(dataPath('testCases', scopeId))
+    if (!saved || !jsonValuesEqual(saved.value, next)) throw new Error('测试用例写入后精确回读不一致')
+    return saved as RemotePayload<PrototypeTestCase[]>
   })
 }
 
@@ -266,6 +269,6 @@ export function loadRemoteFlows() {
   return loadRemote<{ version?: string; flows?: MainFlow[] }>('flows')
 }
 
-export function saveRemoteFlows(authorName: string, flows: MainFlow[]) {
-  return saveRemote('flows', { version: '1.0.0', flows }, '', authorName, '保存')
+export function saveRemoteFlows(authorName: string, flows: MainFlow[], expectedRevision?: string | null) {
+  return saveRemote('flows', { version: '1.0.0', flows }, '', authorName, '保存', expectedRevision)
 }

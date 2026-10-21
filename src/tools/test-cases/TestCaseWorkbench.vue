@@ -74,6 +74,7 @@ const rangeMode = ref<'current' | 'all'>('current')
 const mobileView = ref<'scopes' | 'cases'>('cases')
 const editorVisible = ref(false)
 const editingCaseId = ref('')
+const newCaseId = ref('')
 const draft = reactive<TestCaseDraft>(emptyTestCaseDraft())
 const initialDraftJson = ref('')
 const notice = ref('')
@@ -126,6 +127,7 @@ async function chooseScope(scope: TestCaseScope) {
 
 function openCreate() {
   editingCaseId.value = ''
+  newCaseId.value = crypto.randomUUID?.() ?? `test-case-${Date.now()}`
   resetDraft(emptyTestCaseDraft(currentScope.value?.screenTitle ?? ''))
   editorVisible.value = true
 }
@@ -148,6 +150,7 @@ function closeEditor(check = true) {
   if (check && !confirmDiscard()) return
   editorVisible.value = false
   editingCaseId.value = ''
+  newCaseId.value = ''
   resetDraft(emptyTestCaseDraft())
 }
 
@@ -165,7 +168,7 @@ async function submit() {
   const existing = testCases.value.find((item) => item.id === editingCaseId.value)
   const now = new Date().toISOString()
   const target: PrototypeTestCase = {
-    id: existing?.id ?? (crypto.randomUUID?.() ?? `test-case-${Date.now()}`),
+    id: existing?.id ?? newCaseId.value,
     screenId: currentScope.value.screenId,
     stateId: currentScope.value.stateId,
     module: draft.module.trim(),
@@ -180,6 +183,7 @@ async function submit() {
     updatedAt: now,
   }
   const success = await saveTestCase(existing ? '编辑' : '新增', target)
+  if (!success && testCases.value.some((item) => item.id === target.id)) editingCaseId.value = target.id
   notice.value = success ? (sourceState.value.source === 'local-cache' ? '已保存到本地缓存，尚未同步 Gitee' : '测试用例已保存') : (sourceState.value.message ?? '保存失败')
   if (success) closeEditor(false)
 }
@@ -227,7 +231,7 @@ function beforeUnload(event: BeforeUnloadEvent) {
   event.returnValue = ''
 }
 
-watch(isDirty, (value) => setTestCaseEditing(value), { immediate: true })
+watch(editorVisible, (value) => setTestCaseEditing(value), { immediate: true })
 watch(allScopes, (options) => {
   if (options.length && !options.some((scope) => scope.id === selectedScopeId.value)) selectedScopeId.value = options[0].id
 }, { immediate: true })

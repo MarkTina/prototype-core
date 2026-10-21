@@ -1,15 +1,7 @@
 import type { CollaborationCacheEntry, CollaborationCacheSnapshot, CollaborationDataKind, DataSource, ScopedCollaborationCacheSnapshot } from '../types/prototype'
 
-export function collaborationBranchKey(branch: string) {
-  if (branch === 'main') return 'main'
-  let hash = 2166136261
-  for (const character of branch) {
-    hash ^= character.codePointAt(0) ?? 0
-    hash = Math.imul(hash, 16777619)
-  }
-  const slug = branch.normalize('NFKD').replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) || 'branch'
-  return `${slug}-${(hash >>> 0).toString(16).padStart(8, '0')}`
-}
+import { jsonValuesEqual } from './giteeContents.mjs'
+export { collaborationBranchKey, jsonValuesEqual, selectGiteeFileResponse } from './giteeContents.mjs'
 
 export function collaborationCacheKey(scopeParts: string[], kind: CollaborationDataKind | string) {
   return `prototype-collaboration:v2:${scopeParts.map(encodeURIComponent).join(':')}:${kind}`
@@ -47,29 +39,6 @@ export function createSerialQueue() {
   }
 }
 
-function stableJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`
-  if (value && typeof value === 'object') {
-    return `{${Object.entries(value as Record<string, unknown>).sort(([left], [right]) => left.localeCompare(right)).map(([key, item]) => `${JSON.stringify(key)}:${stableJson(item)}`).join(',')}}`
-  }
-  return JSON.stringify(value)
-}
-
-export function jsonValuesEqual(left: unknown, right: unknown) {
-  return stableJson(left) === stableJson(right)
-}
-
 export function remoteInitializationDecision(current: unknown, next: unknown): 'unchanged' | 'protected' {
   return jsonValuesEqual(current, next) ? 'unchanged' : 'protected'
-}
-
-export function selectGiteeFileResponse(response: unknown, requestedPath: string) {
-  const candidates = Array.isArray(response) ? response : [response]
-  if (!candidates.length) return null
-  const file = candidates.find((item) => {
-    if (!item || typeof item !== 'object') return false
-    const value = item as Record<string, unknown>
-    return value.path === requestedPath && typeof value.content === 'string' && typeof value.sha === 'string'
-  })
-  return file ? file as { content: string; sha: string } : null
 }

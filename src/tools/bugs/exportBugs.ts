@@ -114,7 +114,7 @@ function addBugSheet(workbook: Workbook, bugs: ProductBug[]) {
     fixerName: bug.fixerName ?? '',
     createdAt: excelDate(bug.createdAt),
     updatedAt: excelDate(bug.updatedAt),
-    attachmentCount: bug.attachments?.length ?? 0,
+    attachmentCount: (bug.attachments?.length ?? 0) + bug.history.reduce((count, entry) => count + (entry.attachments?.length ?? 0), 0),
     historyCount: bug.history.length,
   })))
   styleWorksheet(worksheet, 'O')
@@ -136,12 +136,18 @@ async function addAttachmentSheet(
     { header: '原始大小（字节）', key: 'originalSize', width: 18 },
     { header: '原图链接', key: 'url', width: 48 },
     { header: '缩略图', key: 'thumbnail', width: 24 },
+    { header: '附件来源', key: 'source', width: 14 },
+    { header: '处理记录 ID', key: 'historyId', width: 32 },
   ]
 
   let attachmentCount = 0
   let thumbnailFailureCount = 0
   for (const bug of bugs) {
-    for (const attachment of bug.attachments ?? []) {
+    const attachments = [
+      ...(bug.attachments ?? []).map((attachment) => ({ attachment, source: '问题截图', historyId: '' })),
+      ...bug.history.flatMap((entry) => (entry.attachments ?? []).map((attachment) => ({ attachment, source: '备注图片', historyId: entry.id }))),
+    ]
+    for (const { attachment, source, historyId } of attachments) {
       attachmentCount += 1
       const row = worksheet.addRow({
         bugId: bug.id,
@@ -153,6 +159,8 @@ async function addAttachmentSheet(
         originalSize: attachment.originalSize,
         url: { text: attachment.url, hyperlink: attachment.url },
         thumbnail: '',
+        source,
+        historyId,
       })
       row.getCell('url').font = { color: { argb: LINK_COLOR }, underline: true }
       try {
@@ -172,7 +180,7 @@ async function addAttachmentSheet(
       }
     }
   }
-  styleWorksheet(worksheet, 'I')
+  styleWorksheet(worksheet, 'K')
   return { attachmentCount, thumbnailFailureCount }
 }
 
@@ -187,6 +195,8 @@ function addHistorySheet(workbook: Workbook, bugs: ProductBug[]) {
     { header: '修复人', key: 'fixerName', width: 14 },
     { header: '备注', key: 'note', width: 42 },
     { header: '变更时间', key: 'createdAt', width: 21 },
+    { header: '备注图片数量', key: 'attachmentCount', width: 16 },
+    { header: '备注图片链接', key: 'attachmentUrls', width: 48 },
   ]
   worksheet.addRows(bugs.flatMap((bug) => bug.history.map((entry) => ({
     bugId: bug.id,
@@ -197,8 +207,10 @@ function addHistorySheet(workbook: Workbook, bugs: ProductBug[]) {
     fixerName: entry.fixerName ?? '',
     note: entry.note ?? '',
     createdAt: excelDate(entry.createdAt),
+    attachmentCount: entry.attachments?.length ?? 0,
+    attachmentUrls: (entry.attachments ?? []).map((attachment) => attachment.url).join('\n'),
   }))))
-  styleWorksheet(worksheet, 'H')
+  styleWorksheet(worksheet, 'J')
 }
 
 export async function buildBugsWorkbook(

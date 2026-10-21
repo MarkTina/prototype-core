@@ -11,7 +11,7 @@ const coreEntries = [
   'src/tools',
   'src/types',
 ]
-const sourceExtensions = new Set(['.ts', '.vue'])
+const sourceExtensions = new Set(['.ts', '.mjs', '.vue'])
 const forbiddenImport = /(?:from\s*|import\s*)['"][^'"]*(?:\/product\/|\/pages\/)[^'"]*['"]/g
 
 async function collectFiles(path) {

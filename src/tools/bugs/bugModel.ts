@@ -92,6 +92,15 @@ function normalizeBug(raw: unknown): ProductBug | null {
           .filter((entry) => entry && typeof entry === 'object')
           .map((entry) => entry as ProductBug['history'][number])
           .filter((entry) => typeof entry.id === 'string' && isBugStatus(entry.fromStatus) && isBugStatus(entry.toStatus) && typeof entry.operatorName === 'string' && typeof entry.createdAt === 'string')
+          .map((entry) => {
+            const { attachments, ...history } = entry
+            return {
+              ...history,
+              ...(Array.isArray(attachments) ? {
+                attachments: attachments.map(normalizeAttachment).filter((attachment): attachment is ProductBugAttachment => Boolean(attachment)),
+              } : {}),
+            }
+          })
       : [],
   }
 }
@@ -109,14 +118,26 @@ interface BugRemoteExportPayload {
 export function requireRemoteBugsForExport(remote: BugRemoteExportPayload | null, remoteReady = true) {
   if (!remoteReady) throw new Error('未启用 Gitee Bug 协作，无法导出远端最新数据')
   if (!remote?.exists) throw new Error('Gitee Bug 文件不存在，无法导出远端最新数据')
-  const normalized = normalizeBugs(remote.value)
-  if (normalized.length !== remote.value.length) throw new Error('Gitee Bug 数据包含无效记录，已中止导出以避免遗漏')
-  const remoteAttachmentCount = remote.value.reduce((count, bug) => count + (Array.isArray(bug.attachments) ? bug.attachments.length : 0), 0)
-  const remoteHistoryCount = remote.value.reduce((count, bug) => count + (Array.isArray(bug.history) ? bug.history.length : 0), 0)
-  const normalizedAttachmentCount = normalized.reduce((count, bug) => count + (bug.attachments?.length ?? 0), 0)
+  return normalizeCompleteRemoteBugs(remote.value)
+}
+
+export function normalizeCompleteRemoteBugs(value: ProductBug[]) {
+  const normalized = normalizeBugs(value)
+  if (normalized.length !== value.length) throw new Error('Gitee Bug 数据包含无效记录，已停止操作以避免遗漏')
+  const invalidHistoryAttachments = value.some((bug) => Array.isArray(bug.history) && bug.history.some((entry) =>
+    entry && entry.attachments !== undefined && !Array.isArray(entry.attachments),
+  ))
+  if (invalidHistoryAttachments) throw new Error('Gitee Bug 数据包含无效附件或状态历史，已停止操作以避免遗漏')
+  const remoteAttachmentCount = value.reduce((count, bug) => count
+    + (Array.isArray(bug.attachments) ? bug.attachments.length : 0)
+    + (Array.isArray(bug.history) ? bug.history.reduce((sum, entry) => sum + (Array.isArray(entry?.attachments) ? entry.attachments.length : 0), 0) : 0), 0)
+  const remoteHistoryCount = value.reduce((count, bug) => count + (Array.isArray(bug.history) ? bug.history.length : 0), 0)
+  const normalizedAttachmentCount = normalized.reduce((count, bug) => count
+    + (bug.attachments?.length ?? 0)
+    + bug.history.reduce((sum, entry) => sum + (entry.attachments?.length ?? 0), 0), 0)
   const normalizedHistoryCount = normalized.reduce((count, bug) => count + bug.history.length, 0)
   if (remoteAttachmentCount !== normalizedAttachmentCount || remoteHistoryCount !== normalizedHistoryCount) {
-    throw new Error('Gitee Bug 数据包含无效附件或状态历史，已中止导出以避免遗漏')
+    throw new Error('Gitee Bug 数据包含无效附件或状态历史，已停止操作以避免遗漏')
   }
   return normalized
 }

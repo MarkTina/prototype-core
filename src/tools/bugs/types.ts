@@ -11,6 +11,7 @@ export interface ProductBugHistoryEntry {
   operatorName: string
   fixerName?: string
   note?: string
+  attachments?: ProductBugAttachment[]
   createdAt: string
 }
 

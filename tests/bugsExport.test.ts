@@ -170,3 +170,47 @@ test('空数据仍生成完整表头并使用时间戳文件名', async () => {
   assert.deepEqual(result.workbook.worksheets.map((sheet) => sheet.rowCount), [1, 1, 1])
   assert.equal(bugExportFilename(new Date(2026, 7, 19, 9, 8, 7)), 'bugs-20260819-090807.xlsx')
 })
+
+test('备注图片随处理记录读取，旧记录仍可不带图片', () => {
+  const item = bug()
+  item.history[0]!.attachments = [attachment('remark-1')]
+  const [normalized] = requireRemoteBugsForExport({ value: [item], exists: true })
+  assert.deepEqual(normalized?.history[0]?.attachments, [attachment('remark-1')])
+  assert.equal(normalized?.history[1]?.attachments, undefined)
+  assert.equal(normalized?.attachments?.length, 2)
+})
+
+test('无效备注图片阻止远端整文件操作，避免保存时丢失附件', () => {
+  const item = bug()
+  item.history[0]!.attachments = [{} as ProductBugAttachment]
+  assert.throws(() => requireRemoteBugsForExport({ value: [item], exists: true }), /无效附件或状态历史/)
+  item.history[0]!.attachments = {} as ProductBugAttachment[]
+  assert.throws(() => requireRemoteBugsForExport({ value: [item], exists: true }), /无效附件或状态历史/)
+})
+
+test('Excel 保留各次备注图片、所属记录和原图链接', async () => {
+  const item = bug()
+  item.history[0]!.attachments = [attachment('remark-1')]
+  item.history[1]!.attachments = [attachment('remark-2')]
+  const result = await buildBugsWorkbook([item], {
+    thumbnailLoader: async () => ({ base64: pixel, extension: 'png', width: 1, height: 1 }),
+  })
+  assert.equal(result.attachmentCount, 4)
+  assert.equal(result.workbook.getWorksheet('Bug 明细')?.getCell('N2').value, 4)
+  const attachments = result.workbook.getWorksheet('附件')!
+  assert.equal(attachments.rowCount, 5)
+  assert.equal(attachments.getCell('J2').value, '问题截图')
+  assert.equal(attachments.getCell('J4').value, '备注图片')
+  assert.equal(attachments.getCell('K4').value, 'history-1')
+  assert.equal(attachments.getCell('K5').value, 'history-2')
+  assert.deepEqual(attachments.getCell('H4').value, {
+    text: 'https://example.test/remark-1.png', hyperlink: 'https://example.test/remark-1.png',
+  })
+  const history = result.workbook.getWorksheet('状态历史')!
+  assert.equal(history.getCell('I2').value, 1)
+  assert.equal(history.getCell('J2').value, 'https://example.test/remark-1.png')
+  const reopened = new ExcelJS.Workbook()
+  await reopened.xlsx.load(await result.workbook.xlsx.writeBuffer())
+  assert.equal(reopened.getWorksheet('附件')?.getImages().length, 4)
+  assert.equal(reopened.getWorksheet('状态历史')?.getCell('J3').value, 'https://example.test/remark-2.png')
+})

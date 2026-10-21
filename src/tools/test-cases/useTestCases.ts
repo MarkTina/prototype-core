@@ -13,10 +13,9 @@ import {
 import {
   getCollaborationContext,
   readScopedCollaborationCache,
-  removeScopedCollaborationCache,
   writeScopedCollaborationCache,
 } from '../../prototype/collaborationStore'
-import { shouldDeferRemoteRefresh } from '../../prototype/collaborationPolicy'
+import { jsonValuesEqual } from '../../prototype/collaborationPolicy'
 import {
   applyTestCaseChange,
   buildTestCaseManifest,
@@ -35,6 +34,7 @@ const editing = ref(false)
 const sourceState = ref<CollaborationSourceState>({ source: 'local-seed', status: 'idle' })
 const product = getPrototypeProduct()
 const collaboration = getCollaborationContext()
+let refreshVersion = 0
 
 function setSource(source: CollaborationSourceState['source'], status: CollaborationSourceState['status'], message = '', syncedAt?: string) {
   sourceState.value = { source, status, ...(message ? { message } : {}), ...(syncedAt ? { syncedAt } : {}) }
@@ -71,15 +71,22 @@ function updateLocalManifest(scopeId: string, count: number) {
   }
 }
 
-async function ensureRemoteTestCaseData(seed: PrototypeTestCase[], authorName: string) {
+async function initializeRemoteTestCaseData(authorName = '初始化工具') {
   if (!collaboration.remoteWritable) return
+  const seed = await loadLocalSeed()
   const grouped = new Map<string, PrototypeTestCase[]>()
   seed.forEach((item) => {
     const scopeId = testCaseScopeId(item.screenId, item.stateId)
     grouped.set(scopeId, [...(grouped.get(scopeId) ?? []), item])
   })
-  for (const [scopeId, value] of grouped) await ensureRemoteData('testCases', scopeId, value, authorName)
-  await ensureRemoteData('testCases', undefined, buildTestCaseManifest(collaboration.projectId, seed), authorName)
+  for (const [scopeId, value] of grouped) {
+    await ensureRemoteData('testCases', scopeId, value, authorName)
+    const remote = await loadRemoteTestCases(scopeId)
+    if (!remote || !Array.isArray(remote.value)) throw new Error('测试用例初始化回读无效')
+    const entry = { count: remote.value.length, updatedAt: new Date().toISOString() }
+    await saveRemoteTestCaseManifest({ projectId: collaboration.projectId, updatedAt: entry.updatedAt, scopes: { [scopeId]: entry }, screens: {} }, authorName, scopeId)
+  }
+  await ensureRemoteData('testCases', undefined, buildTestCaseManifest(collaboration.projectId, []), authorName)
 }
 
 async function initializeTestCases(authorName = '初始化工具') {
@@ -99,7 +106,6 @@ async function initializeTestCases(authorName = '初始化工具') {
     return
   }
   try {
-    await ensureRemoteTestCaseData(seed, authorName)
     await refreshTestCases(false)
   } catch (error) {
     setSource(cachedScopeIds.size ? 'local-cache' : 'local-seed', 'error', error instanceof Error ? error.message : '测试用例初始化失败')
@@ -113,22 +119,25 @@ async function selectTestCaseScope(screenId: string, stateId?: string) {
 
 async function refreshTestCases(fromPolling = false) {
   if (!initialized.value || !collaboration.remoteReadable || !selectedScopeId.value) return
-  if (shouldDeferRemoteRefresh(fromPolling, editing.value)) {
+  if (editing.value) {
     setSource(sourceState.value.source, 'idle', '检测到未保存编辑，已暂缓轮询覆盖')
     return
   }
   setSource(sourceState.value.source, 'syncing')
   const scopeId = selectedScopeId.value
+  const version = ++refreshVersion
+  const mayApply = () => version === refreshVersion && scopeId === selectedScopeId.value && !editing.value
   try {
     const [manifest, remote] = await Promise.all([loadRemoteTestCaseManifest(), loadRemoteTestCases(scopeId)])
-    testCaseManifest.value = manifest?.value ?? testCaseManifest.value
+    if (!mayApply()) return
+    testCaseManifest.value = manifest?.value ?? null
     const cached = readScopedCollaborationCache<PrototypeTestCase[]>('testCases').scopes[scopeId]
     if (!remote && !manifest?.value.scopes?.[scopeId]) {
       if (cached?.status === 'pending') {
         setSource('local-cache', 'idle', 'Gitee 当前 Scope 不存在，本地缓存待推送')
         return
       }
-      removeScopedCollaborationCache('testCases', scopeId)
+      writeScopedCollaborationCache('testCases', scopeId, [], null, new Date().toISOString(), 'synced')
       replaceScope(scopeId, [])
       setSource('gitee', 'success', '', new Date().toISOString())
       return
@@ -143,9 +152,9 @@ async function refreshTestCases(fromPolling = false) {
     }
     writeScopedCollaborationCache('testCases', scopeId, canonical, remote.sha, syncedAt, 'synced')
     replaceScope(scopeId, canonical)
-    updateLocalManifest(scopeId, canonical.length)
     setSource('gitee', 'success', '', syncedAt)
   } catch (error) {
+    if (!mayApply()) return
     const cached = readScopedCollaborationCache<PrototypeTestCase[]>('testCases').scopes[scopeId]
     if (cached) writeScopedCollaborationCache('testCases', scopeId, cached.value, cached.revision, cached.lastRemoteSyncAt, cached.status === 'pending' ? 'pending' : 'stale', error instanceof Error ? error.message : '测试用例同步失败')
     setSource(cached ? 'local-cache' : sourceState.value.source, 'error', error instanceof Error ? error.message : '测试用例同步失败')
@@ -155,28 +164,40 @@ async function refreshTestCases(fromPolling = false) {
 async function saveTestCase(operation: TestCaseOperation, target: PrototypeTestCase) {
   const scopeId = testCaseScopeId(target.screenId, target.stateId)
   const author = target.authorName?.trim() || '未署名'
+  refreshVersion += 1
+  const original = testCases.value.find((item) => item.id === target.id && testCaseScopeId(item.screenId, item.stateId) === scopeId)
   if (!collaboration.remoteWritable) {
     const next = applyTestCaseChange(testCases.value.filter((item) => testCaseScopeId(item.screenId, item.stateId) === scopeId), operation, target)
     replaceScope(scopeId, next)
     const cached = readScopedCollaborationCache<PrototypeTestCase[]>('testCases').scopes[scopeId]
-    writeScopedCollaborationCache('testCases', scopeId, next, cached?.revision ?? null, cached?.lastRemoteSyncAt ?? null, 'pending')
+    const entry = writeScopedCollaborationCache('testCases', scopeId, next, cached?.revision ?? null, cached?.lastRemoteSyncAt ?? null, 'pending')
     updateLocalManifest(scopeId, next.length)
-    setSource('local-cache', 'success', `${collaboration.unavailableReason || 'Gitee 当前不可写'}，修改尚未同步`)
+    setSource('local-cache', 'success', entry.persistence === 'session' ? '浏览器存储不可用，草稿仅在本次会话保留，刷新后可能丢失' : `${collaboration.unavailableReason || 'Gitee 当前不可写'}，修改尚未同步`)
     return true
   }
   setSource(sourceState.value.source, 'syncing')
   try {
-    const saved = await updateRemoteTestCases(scopeId, author, operation, (remote) => applyTestCaseChange(normalizeTestCases(remote), operation, target))
+    const saved = await updateRemoteTestCases(scopeId, author, operation, (remote) => {
+      const normalized = normalizeTestCases(remote)
+      const current = normalized.find((item) => item.id === target.id)
+      const desired = operation === '删除' ? undefined : target
+      if (!jsonValuesEqual(current, desired) && !jsonValuesEqual(current, original)) throw new CollaborationConflictError('该测试用例已被其他协作者修改，请刷新后处理草稿')
+      return applyTestCaseChange(normalized, operation, target)
+    })
     if (!saved) throw new Error('测试用例写入后未能回读')
     const canonical = normalizeTestCases(saved.value).map((item) => ({ ...item, screenId: target.screenId, stateId: target.stateId }))
     const syncedAt = new Date().toISOString()
     replaceScope(scopeId, canonical)
     updateLocalManifest(scopeId, canonical.length)
-    writeScopedCollaborationCache('testCases', scopeId, canonical, saved.sha, syncedAt, 'synced')
+    writeScopedCollaborationCache('testCases', scopeId, canonical, saved.sha, null, 'pending', undefined, saved.sha)
     if (!testCaseManifest.value) testCaseManifest.value = buildTestCaseManifest(collaboration.projectId, testCases.value, syncedAt)
     const savedManifest = await saveRemoteTestCaseManifest(testCaseManifest.value, author, scopeId)
     if (!savedManifest) throw new Error(`测试用例 ${scopeId} 已写入，但 manifest 回读失败`)
+    const verified = await loadRemoteTestCases(scopeId)
+    if (!verified || verified.sha !== saved.sha || !jsonValuesEqual(verified.value, saved.value)) throw new CollaborationConflictError('测试用例索引保存期间正文已变化，请刷新后处理草稿')
+    refreshVersion += 1
     testCaseManifest.value = savedManifest.value
+    writeScopedCollaborationCache('testCases', scopeId, canonical, saved.sha, syncedAt, 'synced')
     setSource('gitee', 'success', '', syncedAt)
     return true
   } catch (error) {
@@ -227,10 +248,15 @@ export function useTestCases() {
     selectedScopeCases: computed(() => testCases.value.filter((item) => testCaseScopeId(item.screenId, item.stateId) === selectedScopeId.value)),
     scopes,
     initializeTestCases,
+    initializeRemoteTestCaseData,
     selectTestCaseScope,
     refreshTestCases,
     saveTestCase,
     loadAllTestCasesForExport,
-    setTestCaseEditing(value: boolean) { editing.value = value },
+    setTestCaseEditing(value: boolean) {
+      if (editing.value !== value) refreshVersion += 1
+      editing.value = value
+      if (value && sourceState.value.status === 'syncing') setSource(sourceState.value.source, 'idle', '正在编辑，已暂缓远端刷新')
+    },
   }
 }

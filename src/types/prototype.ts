@@ -18,6 +18,8 @@ export interface CollaborationSourceState {
 export interface CollaborationCacheEntry<T> {
   value: T
   revision: string | null
+  baseRevision?: string | null
+  persistence?: 'persistent' | 'session'
   cachedAt: string
   lastRemoteSyncAt: string | null
   status: CollaborationCacheStatus
@@ -30,6 +32,7 @@ export interface CollaborationCacheSnapshot<T> extends CollaborationCacheEntry<T
 
 export interface ScopedCollaborationCacheSnapshot<T> {
   schemaVersion: 3
+  persistence?: 'persistent' | 'session'
   scopes: Record<string, CollaborationCacheEntry<T>>
 }
 

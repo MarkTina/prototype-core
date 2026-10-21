@@ -1,6 +1,6 @@
-import { createSerialQueue, selectGiteeFileResponse } from '../../prototype/collaborationPolicy'
+import { createSerialQueue, jsonValuesEqual } from '../../prototype/collaborationPolicy'
 import { getCollaborationContext } from '../../prototype/collaborationStore'
-import { CollaborationConflictError } from '../../prototype/annotationClient'
+import { readGiteeJson, writeGiteeJson, CollaborationConflictError } from '../../prototype/giteeContents.mjs'
 import type { ProductBug } from './types'
 
 export interface BugRemotePayload<T> {
@@ -10,22 +10,9 @@ export interface BugRemotePayload<T> {
   legacy: boolean
 }
 
-const GITEE_API_BASE = 'https://gitee.com/api/v5'
 const enqueue = createSerialQueue()
 
 export const bugRemoteEnabled = getCollaborationContext().remoteReadable
-
-function encodePath(path: string) {
-  return path.split('/').map(encodeURIComponent).join('/')
-}
-
-function encodeBase64(value: string) {
-  return btoa(unescape(encodeURIComponent(value)))
-}
-
-function decodeBase64(value: string) {
-  return decodeURIComponent(escape(atob(value.replace(/\s/g, ''))))
-}
 
 function bugDataPath() {
   const context = getCollaborationContext()
@@ -45,31 +32,8 @@ function commitMessage(operatorName: string, operation: string) {
 async function requestGiteeFile(path: string): Promise<BugRemotePayload<unknown> | null> {
   const context = getCollaborationContext()
   if (!context.remoteReadable) return null
-
-  const url = new URL(`${GITEE_API_BASE}/repos/${encodeURIComponent(context.owner)}/${encodeURIComponent(context.repo)}/contents/${encodePath(path)}`)
-  url.searchParams.set('access_token', context.token)
-  url.searchParams.set('ref', context.remoteBranch)
-  url.searchParams.set('_ts', `${Date.now()}`)
-
-  const response = await fetch(url, {
-    cache: 'no-store',
-    headers: { 'Cache-Control': 'no-cache, no-store', Pragma: 'no-cache' },
-  })
-  if (response.status === 404) return null
-  if (!response.ok) throw new Error(`读取 Gitee Bug 文件失败：${response.status}`)
-
-  const payload = await response.json() as unknown
-  const file = selectGiteeFileResponse(payload, path)
-  if (file) {
-    return {
-      value: JSON.parse(decodeBase64(file.content)),
-      sha: file.sha,
-      exists: true,
-      legacy: path === legacyBugDataPath(),
-    }
-  }
-  if (Array.isArray(payload)) return null
-  throw new Error('Gitee Bug 文件响应格式异常')
+  const file = await readGiteeJson(context, path)
+  return file ? { ...file, exists: true, legacy: path === legacyBugDataPath() } : null
 }
 
 async function loadCurrentRemote(): Promise<BugRemotePayload<unknown> | null> {
@@ -81,33 +45,20 @@ async function loadCurrentRemote(): Promise<BugRemotePayload<unknown> | null> {
 
 async function writeGiteeFile(path: string, value: unknown, sha: string | null, message: string) {
   const context = getCollaborationContext()
-  if (!context.remoteWritable) return
-
-  const url = `${GITEE_API_BASE}/repos/${encodeURIComponent(context.owner)}/${encodeURIComponent(context.repo)}/contents/${encodePath(path)}`
-  const body = new URLSearchParams()
-  body.set('access_token', context.token)
-  body.set('branch', context.remoteBranch)
-  body.set('content', encodeBase64(JSON.stringify(value, null, 2)))
-  body.set('message', message)
-  if (sha) body.set('sha', sha)
-
-  const response = await fetch(url, {
-    method: sha ? 'PUT' : 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
-    body,
-  })
-
-  if (response.status === 409 || response.status === 422) throw new CollaborationConflictError('远端已有新的 Bug 数据，提交草稿已保留')
-  if (!response.ok) throw new Error(`提交 Gitee Bug 文件失败：${response.status}`)
+  if (!context.remoteWritable) throw new Error(context.unavailableReason)
+  try {
+    await writeGiteeJson(context, path, value, sha, message)
+  } catch (error) {
+    if (error instanceof CollaborationConflictError) throw new CollaborationConflictError('远端已有新的 Bug 数据，提交草稿已保留')
+    throw error
+  }
 }
 
 export async function loadRemoteBugs(): Promise<BugRemotePayload<ProductBug[]> | null> {
   const payload = await loadCurrentRemote()
   if (!payload) return null
-  return {
-    ...payload,
-    value: Array.isArray(payload.value) ? (payload.value as ProductBug[]) : [],
-  }
+  if (!Array.isArray(payload.value)) throw new Error('Gitee Bug 数据格式无效')
+  return { ...payload, value: payload.value as ProductBug[] }
 }
 
 export async function updateRemoteBugs(
@@ -117,8 +68,11 @@ export async function updateRemoteBugs(
 ) {
   return enqueue('bugs:all', async () => {
     const remote = await loadCurrentRemote()
+    if (remote && !Array.isArray(remote.value)) throw new Error('Gitee Bug 数据格式无效，已停止写入')
     const next = transform(Array.isArray(remote?.value) ? (remote.value as ProductBug[]) : [])
     await writeGiteeFile(bugDataPath(), next, remote?.legacy ? null : remote?.sha ?? null, commitMessage(operatorName, operation))
-    return loadRemoteBugs()
+    const saved = await requestGiteeFile(bugDataPath())
+    if (!saved || !jsonValuesEqual(saved.value, next)) throw new Error('Bug 写入后精确回读不一致')
+    return { ...saved, value: saved.value as ProductBug[] }
   })
 }
