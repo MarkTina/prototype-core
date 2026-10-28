@@ -150,6 +150,14 @@ Apple's whitespace is the product's pedestal. Every tile begins with at least 64
 - **No rounded imagery in hero tiles** — images are full-bleed rectangular. Rounding (`{rounded.sm}`, `{rounded.lg}`) appears only on inline card imagery.
 - Lazy-loading via responsive `srcset` and `sizes` across all breakpoints; CDN-optimized WebP.
 
+## 图标规范（消费者 UI）
+
+- 消费者新增或替换的常规 UI 图标统一使用 Iconify，默认选用 `lucide` 图标集；先复用已有封装，再检索成熟图标，保持同一产品的风格、视觉尺寸与对齐一致。
+- 使用 `@iconify/vue` 配合 `@iconify-icons/<prefix>` 的单图标本地导入，按需随消费者构建打包，不默认依赖外部图标服务或整库注册。内核现有 Lucide 实现和必需的 `@lucide/vue` peer dependency 保留，不要求迁移历史页面。
+- 禁止为返回、搜索、关闭、菜单、操作及状态等常规图标手写 SVG 路径、CSS 拼图或 Canvas，也不得用 Emoji、Unicode 字符替代。品牌 Logo、产品专属插画和业务图表使用提供的素材或专项实现；缺少合适资源时说明缺口，不自行仿画。
+- 单色图标继承 `currentColor`，颜色通过 `--ds-*` token 设置；图标大小与不小于 `44 × 44px` 的触控热区分别控制，仅图标按钮必须有可访问名称。
+- 安装、业务组件和 `pages[].icon` 的 Vue 组件封装示例集中见 `AI-PROTOTYPE-GUIDE.md` 第 6.3.1 节；封装必须透传尺寸、class、style 和可访问性属性。
+
 ## Components
 
 ### Top Navigation

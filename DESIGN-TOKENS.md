@@ -1,6 +1,6 @@
 # Design Tokens
 
-本文件是 `DESIGN.md` 的实现索引。`DESIGN.md` 保持为设计系统事实来源；本文件只记录内核和消费者原型页面在编码时应优先使用的变量名。
+本文件是 `DESIGN.md` 的实现索引。`DESIGN.md` 保持为设计系统事实来源；本文件记录内核和消费者原型页面在编码时应优先使用的变量名及相关实现约束。
 
 ## 使用规则
 
@@ -8,6 +8,14 @@
 - 内核运行时主题变量统一使用 `--ds-*`；历史 `--color-*` 变量继续保留为兼容别名。
 - 消费者页面也应优先使用这些 token，但内核不强制扫描或改写消费者业务代码。
 - 无法用现有 token 表达的新设计值，应先补充本文件，再进入实现。
+
+## 图标实现约束
+
+- 消费者新增或替换的常规 UI 图标统一使用 Iconify，默认 `lucide` 图标集；用 `@iconify/vue` 配合 `@iconify-icons/lucide` 单图标本地导入并按需打包，不默认在线加载或整库注册。
+- 禁止为常规图标手写 SVG 路径、CSS 拼图、Canvas，或用 Emoji、Unicode 字符替代；品牌 Logo、产品专属插画和业务图表使用提供的素材或专项实现，缺少资源时说明缺口，不自行仿画。
+- 单色图标继承 `currentColor`，通过父级或图标 class 的 `color` 使用颜色表中的 token；图标尺寸与至少 `44 × 44px` 的按钮热区分别设置，仅图标按钮有可访问名称，装饰性图标设 `aria-hidden="true"`。
+- `pages[].icon` 仍接收 Vue 组件；消费者封装必须透传 `class`、`style`、`width`、`height` 和 `aria-*`，允许导航及 TabBar 控制尺寸与颜色。
+- 完整安装与组件示例见 `AI-PROTOTYPE-GUIDE.md` 第 6.3.1 节，也可从 `#/prototype-core-help` 读取。内核现有 Lucide 实现及必需的 `@lucide/vue` peer dependency 保留，不要求迁移历史页面。
 
 ## 颜色
 

@@ -37,6 +37,7 @@ const statusTone: Record<BugStatus, string> = {
   待处理: 'danger',
   已确认: 'warning',
   修复中: 'progress',
+  待部署: 'warning',
   已修复: 'fixed',
   已验证: 'success',
   无需处理: 'muted',
@@ -1001,6 +1002,11 @@ async function handleExportBugs() {
         <Bug class="h-5 w-5" />
         <span>修复中</span>
         <strong>{{ bugStatusCounts['修复中'] }}</strong>
+      </article>
+      <article class="bug-stat-card warning">
+        <CircleDot class="h-5 w-5" />
+        <span>待部署</span>
+        <strong>{{ bugStatusCounts['待部署'] }}</strong>
       </article>
       <article class="bug-stat-card is-fixed">
         <CheckCircle2 class="h-5 w-5" />

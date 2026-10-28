@@ -65,6 +65,24 @@ test('未修复口径不包含已确认状态', () => {
   assert.equal(unresolvedBugStatuses.includes('已确认'), false)
 })
 
+test('待部署状态和双向状态历史在远端读取及 Excel 导出中完整保留', async () => {
+  const item = bug({ status: '待部署', attachments: [] })
+  item.history = [
+    { ...item.history[0]!, fromStatus: '修复中', toStatus: '待部署' },
+    { ...item.history[1]!, fromStatus: '待部署', toStatus: '已修复' },
+  ]
+  const normalized = requireRemoteBugsForExport({ value: [item], exists: true })
+  assert.equal(normalized[0]?.status, '待部署')
+  assert.deepEqual(normalized[0]?.history, item.history)
+
+  const { workbook } = await buildBugsWorkbook(normalized)
+  const reopened = new ExcelJS.Workbook()
+  await reopened.xlsx.load(await workbook.xlsx.writeBuffer())
+  assert.equal(reopened.getWorksheet('Bug 明细')?.getCell('H2').value, '待部署')
+  assert.equal(reopened.getWorksheet('状态历史')?.getCell('D2').value, '待部署')
+  assert.equal(reopened.getWorksheet('状态历史')?.getCell('C3').value, '待部署')
+})
+
 test('Bug 工作簿包含明细、附件和状态历史三张表', async () => {
   const result = await buildBugsWorkbook([bug({ ownerRoles: ['iOS 开发', '产品经理'] })], {
     thumbnailLoader: async (item) => {

@@ -30,8 +30,9 @@
 | --- | --- | --- | --- |
 | 接入内核 | “接入脚手架”“初始化原型”“搭建消费者项目”“安装内核” | `package.json`、入口文件、产品定义 | 安装依赖、挂载内核、建立产品定义、完成基线构建 |
 | 再次进入已有项目 | “继续原型”“接着做”“检查当前项目”“冷启动” | `AGENTS.md`、`HANDOFF.md`、`package.json`、入口、产品定义 | 确认版本、未提交改动、页面/状态/流程真值和运行配置来源 |
-| 新增页面 | “新增页面”“创建页面”“实现页面”“还原设计稿” | 消费者页面目录、产品定义 | UI 确认、组件实现、页面注册、状态/文案、跳转、流程、页面描述、验证 |
-| 修改页面 | “调整页面”“改 UI”“修改交互”“修复页面” | 目标组件及调用方 | 保持 ID，局部修改；同步受影响状态、流程和页面描述 |
+| 新增页面 | “新增页面”“创建页面”“实现页面”“还原设计稿” | 消费者页面目录、产品定义 | UI 确认、按 6.3.1 选用 Iconify 图标、组件实现、页面注册、状态/文案、跳转、流程、页面描述、验证 |
+| 修改页面 | “调整页面”“改 UI”“修改交互”“修复页面” | 目标组件及调用方 | 保持 ID，局部修改；新增或替换图标遵循 6.3.1；同步受影响状态、流程和页面描述 |
+| 图标选型 | “添加图标”“替换图标”“Iconify”“图标库” | 目标组件、消费者图标组件与依赖 | 按 6.3.1 检索成熟图标、本地按需导入；核对风格、属性透传与可访问名称，不自行绘制常规图标 |
 | 页面状态 | “新增状态”“空状态”“加载态”“失败态”“弹窗态” | 页面组件、`product.states`、双语文案 | 注册状态 ID、实现展示条件、补流程引用和状态级页面描述 |
 | 页面跳转 | “跳转”“返回”“Tab 切换”“进入详情” | 事件处理与 `usePrototypeContext` | 目标已注册；实现 `go/goTab`；检查流程节点一致性 |
 | 流程编排 | “新增流程”“修改流程”“流程图”“推送流程” | 产品定义或本地 `flows.json`、流程编辑器 | 节点引用合法；本地保存；明确需要时推送 Gitee；回读验证 |
@@ -69,7 +70,7 @@
 
 1. 读取消费者 `AGENTS.md` 和 `HANDOFF.md`；没有则读取 README。
 2. 运行 `git status --short --branch`，现有改动默认属于用户。
-3. 读取 `package.json`，确认 Vue、Vite、包管理器、验证命令和实际安装的内核版本。
+3. 读取 `package.json`，确认 Vue、Vite、包管理器、验证命令和实际安装的内核版本；涉及图标时检查已有图标组件与 Iconify 依赖。
 4. 读取入口文件，确认 `mountPrototypeApp`、内核样式和 `runtimeConfig` 的组装位置。
 5. 读取产品定义，建立页面、状态、文案、流程的 ID 对照。
 6. 读取目标页面及其直接依赖、跳转调用和状态数据；不要只看搜索结果。
@@ -103,6 +104,14 @@ pnpm add @marktowin/prototype-core vue @lucide/vue
 
 Vue 和 `@lucide/vue` 是 peer dependencies。消费者应复用单一实例，不把内核源码复制进项目。
 
+消费者业务 UI 的常规图标统一使用 Iconify，另行安装：
+
+```bash
+pnpm add @iconify/vue @iconify-icons/lucide
+```
+
+`@iconify/vue` 是消费者使用的图标组件，`@iconify-icons/lucide` 提供本地图标数据；具体用法见 6.3.1。内核已有图标仍依赖 `@lucide/vue`，不得因安装 Iconify 而删除该 peer dependency。本规范不要求迁移历史页面的既有图标。
+
 ### 4.2 入口挂载
 
 ```ts
@@ -129,8 +138,8 @@ void mountPrototypeApp({
 产品定义集中维护页面、状态、双语文案和流程：
 
 ```ts
-import { Home } from '@lucide/vue'
 import type { PrototypeProductDefinition } from '@marktowin/prototype-core'
+import HomeIcon from './components/icons/HomeIcon.vue'
 import HomeScreen from './screens/HomeScreen.vue'
 
 export const product: PrototypeProductDefinition = {
@@ -147,7 +156,7 @@ export const product: PrototypeProductDefinition = {
       code: 'M1',
       title: '首页',
       subtitle: '首页说明',
-      icon: Home,
+      icon: HomeIcon,
       component: HomeScreen,
       hasTabBar: true,
     },
@@ -175,6 +184,8 @@ export const product: PrototypeProductDefinition = {
   },
 }
 ```
+
+`HomeIcon.vue` 的消费者侧封装见 6.3.1；`pages[].icon` 接收 Vue 组件，不接收 Iconify 名称字符串或图标数据对象。
 
 ### 5.1 顶部产品文档配置
 
@@ -341,8 +352,83 @@ export const product: PrototypeProductDefinition = {
 - 跨页面、Tab 和评审状态切换使用内核上下文。
 - 页面组件会收到响应式 `screen: DisplayScreen` 属性；状态页面必须显式声明该 prop，并以 `screen.stateId` 渲染当前页面实例。
 - 保持消费者现有组件库、尺寸体系和样式约定，不顺手重构其他页面。
+- 新增或替换常规 UI 图标遵循 6.3.1，复用 Iconify 图标及消费者已有封装，不自行绘制。
 - 定时器、`requestAnimationFrame`、音频、Canvas 绘制任务和设备监听必须在重新开始前先清理，并在 `onBeforeUnmount` 中释放；不得假设状态切换后组件实例仍然存在。
 - 状态评审数据与真实业务数据分离。状态按钮用于展示空、失败、加载等评审结果时，不得写入真实缓存、最近记录、导入草稿或正式报告；真实业务动作只在明确的确认点写入。
+
+#### 6.3.1 图标选型与使用
+
+**选型规则**
+
+- 消费者新增或替换的返回、搜索、关闭、菜单、导航、操作及状态等常规 UI 图标统一使用 [Iconify](https://iconify.design/)。先检查消费者已有封装，再在 [图标目录](https://icon-sets.iconify.design/) 检索，确认图标真实存在后使用，不编造名称或导入路径。
+- 默认使用 `lucide` 图标集。同一产品保持一致的线性或填充风格、视觉尺寸与对齐方式；该集缺少合适语义时再检索其他成熟图标集，按需安装对应的 `@iconify-icons/<prefix>`，并遵守该图标集许可证。
+- 禁止为常规图标手写 SVG 路径、用 CSS 边框或伪元素拼图、用 Canvas 绘制，或用 Emoji、Unicode 字符代替。Iconify 组件渲染的 SVG 属于库的正常输出，不属于手绘。
+- 品牌 Logo、产品专属插画和业务图表使用用户提供的素材或专项实现，不纳入常规图标限制；找不到合适图标或资源时说明缺口并确认处理方式，不自行仿画。
+- 默认把单图标数据随消费者构建按需打包。不得只传 `icon="lucide:search"` 依赖运行时在线加载，不整库导入或注册，也不把图标服务网络失败作为重新手绘的理由。
+
+**业务组件示例**
+
+完成 4.1 的安装后，从单图标路径默认导入数据对象并传给 `Icon`：
+
+```vue
+<script setup lang="ts">
+import { Icon } from '@iconify/vue'
+import searchIcon from '@iconify-icons/lucide/search'
+
+const emit = defineEmits<{ search: [] }>()
+</script>
+
+<template>
+  <button type="button" class="search-button" aria-label="搜索" @click="emit('search')">
+    <Icon :icon="searchIcon" width="20" height="20" aria-hidden="true" />
+  </button>
+</template>
+
+<style scoped>
+.search-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  color: var(--ds-color-primary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--ds-rounded-sm);
+  cursor: pointer;
+}
+</style>
+```
+
+单色图标继承 `currentColor`，通过父级或图标 class 使用 `--ds-*` 颜色 token，不改写图标路径和填充。图标尺寸与按钮热区分别设置；仅有图标的按钮必须有可访问名称，装饰性图标使用 `aria-hidden="true"`。业务双语项目的按钮名称沿用消费者文案机制。
+
+**页面注册图标示例**
+
+`pages[].icon` 的类型为 Vue `Component`。在消费者的 `src/components/icons/HomeIcon.vue` 中提供可复用组件：
+
+```vue
+<script setup lang="ts">
+import { Icon } from '@iconify/vue'
+import homeIcon from '@iconify-icons/lucide/house'
+
+defineOptions({ inheritAttrs: false })
+</script>
+
+<template>
+  <Icon width="1em" height="1em" v-bind="$attrs" :icon="homeIcon" />
+</template>
+```
+
+再按第 5 节导入 `HomeIcon` 并设置 `icon: HomeIcon`。封装必须透传 `class`、`style`、`width`、`height`、`aria-*` 等属性，使内核导航和 TabBar 能控制尺寸与颜色；默认 `1em` 允许继承字号，不在封装中固定颜色或强制尺寸。只按名称索引图标的消费者封装也必须映射到已导入的本地数据，不回退到在线加载。
+
+**完成判定**
+
+- 所用图标真实存在，来自本地单图标导入，风格一致，无新增的常规图标手绘实现。
+- 页面注册仍传入 Vue 组件，导航和 TabBar 的尺寸 class、颜色和显式尺寸属性能够正常生效。
+- 在交互、全图和流程模式中显示正常；阻断外部 Iconify 图标服务并重新加载后仍能显示，网络面板不产生外部图标请求。首次安装依赖仍需要访问包源。
+- 仅图标按钮有可访问名称，装饰性图标不会被重复朗读。
+
+官方用法依据：[Vue 图标组件](https://iconify.design/docs/icon-components/vue/)与[单图标数据包](https://iconify.design/docs/icons/icons.html)。
 
 ### 6.4 注册页面
 
@@ -469,6 +555,7 @@ const { go, goTab, setPrototypeState } = usePrototypeContext()
 一个页面只有同时满足以下条件才算完成：
 
 - 组件已实现并显式注册。
+- 新增或替换的常规图标按 6.3.1 使用 Iconify 本地数据；页面图标组件透传尺寸与颜色，无自行绘制的常规图标。
 - 状态和中英文标签完整。
 - 所有跳转目标存在。
 - 流程节点与点击逻辑一致。
@@ -748,6 +835,7 @@ const runtimeConfig: PrototypeRuntimeConfig = {
 - 页面和状态 ID 唯一。
 - 所有流程节点和跳转目标存在。
 - 双语 `labelKey` 完整。
+- 新增或替换的常规图标来自 Iconify 本地单图标导入；`pages[].icon` 为 Vue 组件，没有在线名称加载、整库注册或自行绘制实现。
 - 页面描述、注释和测试用例 scope 引用合法。
 
 ### 11.2 项目命令
@@ -763,6 +851,7 @@ const runtimeConfig: PrototypeRuntimeConfig = {
 - 演示模式：移动端保持基准比例整体缩放。
 - 动态任务：采集、上传、轮询、倒计时和 Canvas 动画能完整到达终态；重新开始、切换状态和离开页面后旧任务停止。
 - 移动端视觉：在基准画布和窄屏检查根背景、有效内容宽度、滚动、键盘、固定底栏、圆角过渡和触控热区；展开的内核面板不得遮挡状态按钮或页面导航。
+- 图标：新增或替换的图标在交互、全图和流程模式正常显示，导航及 TabBar 的尺寸与颜色可继承；阻断外部图标服务后重新加载仍可显示，图标按钮有可访问名称。
 - 协作工具：注释、页面描述、测试用例和流程的读、写、冲突、失败降级和轮询行为符合预期。
 
 ### 11.4 远端精确验证
@@ -803,6 +892,7 @@ Git 状态：未提交 / 已提交 / 已推送
 - [ ] 页面状态、双语文案、流程节点和跳转调用完全一致。
 - [ ] 状态页面以响应式 `screen.stateId` 渲染；全图和流程中的同页多状态可以同时显示不同内容。
 - [ ] 页面 UI 方案已确认，页内与跨页交互均实现。
+- [ ] 新增或替换的常规 UI 图标使用 Iconify 本地单图标数据，无自行绘制、Emoji/Unicode 替代或外部图标服务请求；页面图标封装透传属性，图标按钮有可访问名称。
 - [ ] 页面根背景、有效内容宽度、内边距、圆角和 TabBar 分栏已在基准画布及窄屏验证。
 - [ ] 状态预览不污染真实缓存；长任务在组件重建、重新开始和页面离开后可以正确继续或清理。
 - [ ] 页面/状态描述与真实实现一致。

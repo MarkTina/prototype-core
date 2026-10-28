@@ -35,6 +35,7 @@
 - `#/prototype-core-help` 是公开通用帮助路由，内容来自构建时内嵌的 `AI-PROTOTYPE-GUIDE.md`；`#/prototype-core-theme` 是公开通用主题准则路由，内容来自构建时内嵌的 `DESIGN-TOKENS.md`；不得在这些页面混入消费者数据或运行配置。
 - UI 设计系统以 `DESIGN.md` 为事实来源，`DESIGN-TOKENS.md` 为实现索引；新增 UI 优先使用 `--ds-*` 变量，设计系统已有变量不得无理由硬编码。
 - 消费者页面实现也应优先使用设计 token；内核不强制扫描或改写消费者业务代码。
+- 消费者新增或替换的常规 UI 图标统一使用 Iconify，默认 `lucide` 图标集，按 `AI-PROTOTYPE-GUIDE.md` 第 6.3.1 节本地单图标导入并按需打包；禁止手写 SVG 路径、CSS 拼图、Canvas 或用 Emoji、Unicode 字符替代常规图标。品牌 Logo、产品专属插画和业务图表使用提供的素材或专项实现，缺少资源时说明缺口，不自行仿画。`pages[].icon` 仍传入透传尺寸、class、style 和可访问性属性的 Vue 组件；保留内核现有 Lucide 实现及 `@lucide/vue` peer dependency，不要求迁移历史页面。
 
 ## Gitee 协作资源通用契约
 

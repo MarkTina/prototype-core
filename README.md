@@ -8,6 +8,16 @@
 pnpm add @marktowin/prototype-core vue @lucide/vue
 ```
 
+消费者新增或替换的常规 UI 图标统一使用 Iconify，默认选用 `lucide` 图标集，另行安装：
+
+```bash
+pnpm add @iconify/vue @iconify-icons/lucide
+```
+
+图标数据从单图标路径本地导入并随消费者按需打包，不默认在线加载或整库注册；不为常规图标手写 SVG、CSS 或 Canvas，也不使用 Emoji、Unicode 字符替代。品牌 Logo、产品专属插画和业务图表使用提供的素材或专项实现，缺少资源时说明缺口，不自行仿画。内核仍依赖 `@lucide/vue`，不得删除该 peer dependency；不要求迁移历史页面。
+
+安装后的业务组件用法和 `pages[].icon` 的 Vue 组件封装示例见[消费者手册第 6.3.1 节](https://github.com/MarkTina/prototype-core/blob/main/AI-PROTOTYPE-GUIDE.md#631-图标选型与使用)。
+
 ## 使用
 
 ```ts
