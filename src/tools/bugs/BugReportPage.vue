@@ -40,6 +40,7 @@ const statusTone: Record<BugStatus, string> = {
   待部署: 'warning',
   已修复: 'fixed',
   已验证: 'success',
+  暂不处理: 'muted',
   无需处理: 'muted',
 }
 const severityTone: Record<BugSeverity, string> = {
