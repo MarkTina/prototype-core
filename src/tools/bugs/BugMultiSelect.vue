@@ -27,7 +27,9 @@ function handleOutsidePointer(event: PointerEvent) {
 }
 
 function handleFocusOut(event: FocusEvent) {
-  if (!(event.relatedTarget instanceof Node) || !root.value?.contains(event.relatedTarget)) expanded.value = false
+  // 点击选项文字或空白时可能先短暂失焦，不能提前卸载 label 并打断默认勾选。
+  // 外部点击由 pointerdown 收起；键盘移到其他元素时按实际焦点判断。
+  if (event.relatedTarget instanceof Node && !root.value?.contains(event.relatedTarget)) expanded.value = false
 }
 
 onMounted(() => document.addEventListener('pointerdown', handleOutsidePointer))
@@ -85,7 +87,8 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleOutsideP
   min-height: 44px;
   padding: var(--ds-spacing-xs) var(--ds-spacing-sm);
   border: 1px solid rgb(var(--ds-color-hairline));
-  border-radius: var(--ds-rounded-md);
+  border-radius: var(--bug-control-radius);
+  corner-shape: var(--bug-corner-shape);
   background: rgb(var(--ds-color-canvas-parchment));
   color: rgb(var(--ds-color-ink));
   font-size: var(--ds-font-caption-size);
@@ -120,6 +123,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleOutsideP
   width: 100%;
   border: 1px solid rgb(var(--ds-color-hairline));
   border-radius: var(--ds-rounded-md);
+  corner-shape: var(--bug-corner-shape);
   background: rgb(var(--ds-color-canvas));
   box-shadow: var(--ds-shadow-soft);
   color: rgb(var(--ds-color-ink));
@@ -137,6 +141,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleOutsideP
   padding: var(--ds-spacing-xs) var(--ds-spacing-sm);
   border-bottom: 1px solid rgb(var(--ds-color-hairline));
   border-radius: var(--ds-rounded-md) var(--ds-rounded-md) 0 0;
+  corner-shape: var(--bug-corner-shape);
   color: rgb(var(--ds-color-primary));
   text-align: left;
 }
@@ -160,7 +165,8 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleOutsideP
   gap: var(--ds-spacing-xs);
   min-height: 44px;
   padding: var(--ds-spacing-xs);
-  border-radius: var(--ds-rounded-sm);
+  border-radius: var(--ds-rounded-xs);
+  corner-shape: var(--bug-corner-shape);
   cursor: pointer;
   overflow-wrap: anywhere;
 }

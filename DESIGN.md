@@ -143,6 +143,13 @@ Apple's whitespace is the product's pedestal. Every tile begins with at least 64
 | `{rounded.pill}` | 9999px | Primary blue pill CTAs, sub-nav buy button, configurator option chips, search input — the signature Apple pill |
 | `{rounded.full}` | 9999px / 50% | Circular control chips floating over photography |
 
+### Bug 工作台的递进式圆角
+
+- Bug 工作台按《999 个小技巧，让你 Vibe 的产品更有质感》第 004 条采用局部圆角规则，覆盖主页面、详情抽屉和图片预览，不改变其他内核工具或消费者页面的全局 token。
+- 外层卡片与抽屉使用 24px，内边距 16px 后的面板与直接表单控件使用 8px；更深层控件按 `max(4px, 外圆角 − 内边距)` 计算，最小为 4px。多选浮层独立使用 12px，内边距 8px 后的选项使用 4px。
+- 同层保持相同圆角，配套 padding、gap 与 radius 使用 4px 网格。胶囊、状态标签和圆形控件继续全圆，不套用逐层递减规则。
+- 支持的浏览器以 `corner-shape: superellipse(1.25)` 渐进增强非全圆表面；胶囊和圆形维持 `round`，不支持的浏览器保留相同 `border-radius`。
+
 ### Photography Geometry
 - **Hero imagery**: full-bleed, 21:9 or taller on the homepage; 16:9 on environment and shop pages. Product renders are photographic-realistic, often shot on a tinted surface that becomes the tile background.
 - **Product renders**: PNG/WebP with transparency; rest on a surface tile and pick up the system shadow.

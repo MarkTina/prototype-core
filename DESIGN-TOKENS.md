@@ -81,6 +81,22 @@
 | `--ds-shadow-product` | `rgba(0, 0, 0, 0.22) 3px 5px 30px 0` | 仅用于产品图片 |
 | `--ds-shadow-soft` | `0 16px 40px rgba(17, 24, 39, 0.08)` | 内核现有轻量浮层兼容 |
 
+## Bug 工作台局部覆盖
+
+Bug 页面的圆角以 `DESIGN.md` 中的递进式圆角规则为准。下列覆盖只在 `.bug-page` 及其内部抽屉、图片预览生效，不改写根节点或其他工具的主题值。
+
+| Token | 局部值 | 用途 |
+| --- | --- | --- |
+| `--ds-rounded-lg` | `24px` | 顶部、统计、提报与列表容器、详情抽屉、图片预览 |
+| `--ds-rounded-md` | `12px` | 独立多选浮层 |
+| `--ds-rounded-sm` | `max(var(--ds-rounded-xs), calc(var(--ds-rounded-lg) - var(--ds-spacing-md)))`，默认 `8px` | 内层面板及提报表单控件 |
+| `--ds-rounded-xs` | `4px` | 深层控件、选项、图片缩略图 |
+| `--ds-spacing-md` | `16px` | 外层容器内边距与表单间距 |
+| `--bug-control-radius` | 默认 `--ds-rounded-sm`，深层面板使用 `--ds-rounded-xs` | 按所在层级控制输入框和筛选按钮 |
+| `--bug-corner-shape` | 默认 `round`，通过 `@supports` 后为 `superellipse(1.25)` | 非全圆表面的渐进增强 |
+
+`--ds-rounded-pill` 保持全圆。浮层选项间距使用 `--ds-spacing-xs`（8px），输入框内边距使用 12px，配套 padding / gap 均落在 4px 网格上。
+
 ## 兼容映射
 
 | 历史变量 | 推荐新变量 | 当前用途 |
