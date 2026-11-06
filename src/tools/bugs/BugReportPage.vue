@@ -24,7 +24,6 @@ const {
   bugSourceSides,
   bugOwnerRoles,
   bugStatuses,
-  unresolvedBugStatuses,
   bugRemoteReady,
   bugSyncStatus,
   bugSyncMessage,
@@ -133,7 +132,7 @@ const filters = reactive({
   sourceSide: [] as BugSourceSide[],
   sourceSideVersion: [] as string[],
   ownerRole: [] as BugOwnerRole[],
-  status: ['未修复'] as (BugStatus | '未修复')[],
+  status: ['待处理'] as BugStatus[],
   keyword: '',
 })
 const bugSort = ref<BugSortKey>('createdDesc')
@@ -449,7 +448,7 @@ const filteredBugs = computed(() => {
     if (filters.sourceSide.length && !filters.sourceSide.includes(bug.sourceSide)) return false
     if (filters.sourceSideVersion.length && !filters.sourceSideVersion.includes(bug.sourceSideVersion ?? '')) return false
     if (filters.ownerRole.length && !filters.ownerRole.some((role) => bug.ownerRoles.includes(role))) return false
-    if (filters.status.length && !filters.status.some((status) => status === '未修复' ? unresolvedBugStatuses.includes(bug.status) : bug.status === status)) return false
+    if (filters.status.length && !filters.status.includes(bug.status)) return false
     if (!keyword) return true
     return [bug.id, bug.title, bug.description, bug.reporterName, bug.fixerName, bug.type, bug.severity, bug.sourceSide, bug.sourceSideVersion, ownerRolesLabel(bug.ownerRoles), bug.status]
       .filter(Boolean)
@@ -1124,7 +1123,7 @@ async function handleExportBugs() {
             <span>筛选</span>
           </div>
           <div class="bug-filter-grid">
-            <BugMultiSelect v-model="filters.status" label="状态" :options="['未修复', ...bugStatuses]" />
+            <BugMultiSelect v-model="filters.status" label="状态" :options="bugStatuses" />
             <BugMultiSelect v-model="filters.type" label="类型" :options="bugTypes" />
             <BugMultiSelect v-model="filters.severity" label="等级" :options="bugSeverities" />
             <BugMultiSelect v-model="filters.ownerRole" label="归属" :options="bugOwnerRoles" />
