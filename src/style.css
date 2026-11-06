@@ -494,8 +494,7 @@
   .bug-submit-panel input,
   .bug-submit-panel select,
   .bug-submit-panel textarea,
-  .bug-filter-grid select,
-  .bug-filter-grid input,
+  .bug-search-field input,
   .bug-status-form input,
   .bug-status-form select,
   .bug-status-form textarea {
@@ -503,7 +502,6 @@
   }
 
   .bug-submit-panel select,
-  .bug-filter-grid select,
   .bug-status-form select {
     @apply min-w-0 pr-11;
     appearance: none;

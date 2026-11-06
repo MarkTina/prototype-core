@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { AlertTriangle, Bug, CheckCircle2, ChevronLeft, ChevronRight, CircleDot, FileSpreadsheet, Filter, ImagePlus, Minus, Plus, RefreshCw, RotateCcw, Search, Trash2, X } from '@lucide/vue'
 import { useProductBugs } from './useProductBugs'
+import BugMultiSelect from './BugMultiSelect.vue'
 import { getPrototypeRuntime } from '../../core/productAdapter'
 import { getCollaborationContext } from '../../prototype/collaborationStore'
 import { collaborationCacheKey } from '../../prototype/collaborationPolicy'
@@ -127,12 +128,12 @@ interface BugLocator {
 
 const selectedBugLocator = ref<BugLocator | null>(null)
 const filters = reactive({
-  type: '全部' as BugType | '全部',
-  severity: '全部' as BugSeverity | '全部',
-  sourceSide: '全部' as BugSourceSide | '全部',
-  sourceSideVersion: '全部',
-  ownerRole: '全部' as BugOwnerRole | '全部',
-  status: '未修复' as BugStatus | '未修复' | '全部',
+  type: [] as BugType[],
+  severity: [] as BugSeverity[],
+  sourceSide: [] as BugSourceSide[],
+  sourceSideVersion: [] as string[],
+  ownerRole: [] as BugOwnerRole[],
+  status: ['未修复'] as (BugStatus | '未修复')[],
   keyword: '',
 })
 const bugSort = ref<BugSortKey>('createdDesc')
@@ -443,13 +444,12 @@ function isLastSelectedOwnerRole(ownerRoles: BugOwnerRole[], role: BugOwnerRole)
 const filteredBugs = computed(() => {
   const keyword = filters.keyword.trim().toLowerCase()
   return bugs.value.filter((bug) => {
-    if (filters.type !== '全部' && bug.type !== filters.type) return false
-    if (filters.severity !== '全部' && bug.severity !== filters.severity) return false
-    if (filters.sourceSide !== '全部' && bug.sourceSide !== filters.sourceSide) return false
-    if (filters.sourceSideVersion !== '全部' && bug.sourceSideVersion !== filters.sourceSideVersion) return false
-    if (filters.ownerRole !== '全部' && !bug.ownerRoles.includes(filters.ownerRole)) return false
-    if (filters.status === '未修复' && !unresolvedBugStatuses.includes(bug.status)) return false
-    if (filters.status !== '全部' && filters.status !== '未修复' && bug.status !== filters.status) return false
+    if (filters.type.length && !filters.type.includes(bug.type)) return false
+    if (filters.severity.length && !filters.severity.includes(bug.severity)) return false
+    if (filters.sourceSide.length && !filters.sourceSide.includes(bug.sourceSide)) return false
+    if (filters.sourceSideVersion.length && !filters.sourceSideVersion.includes(bug.sourceSideVersion ?? '')) return false
+    if (filters.ownerRole.length && !filters.ownerRole.some((role) => bug.ownerRoles.includes(role))) return false
+    if (filters.status.length && !filters.status.some((status) => status === '未修复' ? unresolvedBugStatuses.includes(bug.status) : bug.status === status)) return false
     if (!keyword) return true
     return [bug.id, bug.title, bug.description, bug.reporterName, bug.fixerName, bug.type, bug.severity, bug.sourceSide, bug.sourceSideVersion, ownerRolesLabel(bug.ownerRoles), bug.status]
       .filter(Boolean)
@@ -1124,31 +1124,12 @@ async function handleExportBugs() {
             <span>筛选</span>
           </div>
           <div class="bug-filter-grid">
-            <select v-model="filters.status">
-              <option value="未修复">未修复</option>
-              <option value="全部">全部状态</option>
-              <option v-for="status in bugStatuses" :key="status" :value="status">{{ status }}</option>
-            </select>
-            <select v-model="filters.type">
-              <option value="全部">全部类型</option>
-              <option v-for="type in bugTypes" :key="type" :value="type">{{ type }}</option>
-            </select>
-            <select v-model="filters.severity">
-              <option value="全部">全部等级</option>
-              <option v-for="severity in bugSeverities" :key="severity" :value="severity">{{ severity }}</option>
-            </select>
-            <select v-model="filters.ownerRole">
-              <option value="全部">全部归属</option>
-              <option v-for="role in bugOwnerRoles" :key="role" :value="role">{{ role }}</option>
-            </select>
-            <select v-model="filters.sourceSide">
-              <option value="全部">全部发生侧</option>
-              <option v-for="side in bugSourceSides" :key="side" :value="side">{{ side }}</option>
-            </select>
-            <select v-model="filters.sourceSideVersion">
-              <option value="全部">全部发生侧版本</option>
-              <option v-for="version in sourceSideVersionSuggestions" :key="version" :value="version">{{ version }}</option>
-            </select>
+            <BugMultiSelect v-model="filters.status" label="状态" :options="['未修复', ...bugStatuses]" />
+            <BugMultiSelect v-model="filters.type" label="类型" :options="bugTypes" />
+            <BugMultiSelect v-model="filters.severity" label="等级" :options="bugSeverities" />
+            <BugMultiSelect v-model="filters.ownerRole" label="归属" :options="bugOwnerRoles" />
+            <BugMultiSelect v-model="filters.sourceSide" label="发生侧" :options="bugSourceSides" />
+            <BugMultiSelect v-model="filters.sourceSideVersion" label="发生侧版本" :options="sourceSideVersionSuggestions" />
             <label class="bug-search-field">
               <Search class="h-4 w-4" />
               <input v-model="filters.keyword" type="search" placeholder="搜索标题、描述、人员、发生侧版本" />
