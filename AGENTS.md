@@ -51,7 +51,7 @@
 | 注释 | `annotations/<scopeId>.json`、`annotations/manifest.json` | 基于远端当前数组执行新增、编辑、移动或删除，再合并更新 manifest 计数；冲突时停止并要求刷新 |
 | 测试用例 | `test-cases/<scopeId>.json`、`test-cases/manifest.json` | 基于远端当前数组按用例 ID 执行新增、编辑或删除，再合并更新 manifest 计数；冲突时停止并保留草稿 |
 | 流程 | `flows.json` | 编辑器本地保存只生成缓存草稿；只有显式“推送 Gitee”才写远端完整流程文件，成功后清除 dirty 标记 |
-| Bug | `bugs/bugs.json` | 基于远端当前数组执行变换后整体写回；附件先上传消费者注入的 OSS，再把 URL 与元数据写入 Bug |
+| Bug | V1：`bugs/bugs.json`；提报版本清单：`bugs/versions.json`；其他版本：`bugs/versions/<versionId>.json` | 每次基于目标文件的最新数组变换，按 SHA 写回并精确回读；仅显式新建版本写清单，首条 Bug 写入时才创建对应正文；附件先传 OSS，再保存 URL 与元数据 |
 
 ### 读取与回退顺序
 

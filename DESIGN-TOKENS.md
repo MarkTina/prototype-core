@@ -5,9 +5,27 @@
 ## 使用规则
 
 - 新增 UI 时先查本文件和 `DESIGN.md`，已有 token 能表达的颜色、字体、圆角、间距和阴影不得无理由硬编码。
-- 内核运行时主题变量统一使用 `--ds-*`；历史 `--color-*` 变量继续保留为兼容别名。
-- 消费者页面也应优先使用这些 token，但内核不强制扫描或改写消费者业务代码。
+- 消费者使用公开主题变量 `--ds-*`；历史 `--color-*` 保留作兼容，两者的推荐替代关系不代表各预设下的值始终相等。
+- `--pc-*` 是内核工作台私有变量，不是消费者主题接口。业务页面不应读写这些变量，内核也不强制扫描或改写消费者业务代码。
 - 无法用现有 token 表达的新设计值，应先补充本文件，再进入实现。
+
+## 工作台主题面板
+
+- 从右上角「主题切换」进入；主题准则通过面板内的书本按钮打开（`#/prototype-core-theme`）。面板限宽，在空间不足时配置项改为单列，内容在面板内纵向滚动。
+- 「导出主题」保存浏览器中维护的自定义主题配置（v2 JSON），并非当前选中预设的快照。「导入主题」读取内核识别的字段并切到「自定义」，兼容旧版 `colors` 字段。
+
+## 内核工作台角色（内部）
+
+`src/workbench/workbench.css` 集中声明 `--pc-*`，仅由内核工具使用。默认预设映射为「纸面」；现有 `spotify` 深色预设映射为「沉墨」；其他预设及自定义从现有 `--ds-color-*` 映射主要表面、文字和操作色。消费者画布仍读取原有主题，现有主题 JSON、ID、浏览器记忆和 `--color-*` 保持兼容。不要把 Open Artifact 的十六进制值直接写入接收 RGB 通道的运行时变量。
+
+| 角色 | 变量 | 使用范围 |
+| --- | --- | --- |
+| 工作区与界面 | `--pc-canvas`、`--pc-panel`、`--pc-quiet`、`--pc-rail` | 画布、面板、表头、全局横梁 |
+| 操作及反馈 | `--pc-action`、`--pc-on-action`、`--pc-hover`、`--pc-selected`、`--pc-focus` | 主按钮、选择、悬停、焦点 |
+| 协作状态 | `--pc-success`、`--pc-warning`、`--pc-danger` 及其 `-bg` | 已同步、待处理、失败；配合可见文字 |
+| 密度 | `--pc-control`、`--pc-row`、`--pc-body-size`、`--pc-table-size`、`--pc-meta-size` | 桌面控件、表格行、正文、表格和元信息 |
+| 层级 | `--pc-r-control`、`--pc-r-panel`、`--pc-r-pill`、`--pc-shadow` | 控件、浮层、状态标签、浮层阴影 |
+| 工作区尺寸 | `--pc-record-max`、`--pc-record-gutter`、`--pc-bug-detail-w`、`--pc-footer-popover-w`、`--pc-theme-popover-w` | Bug 与用例的居中限宽和页边距、Bug 详情宽度、底栏和主题浮层宽度上限 |
 
 ## 图标实现约束
 
@@ -19,7 +37,9 @@
 
 ## 颜色
 
-| Token | 默认值 | 用途 |
+下表十六进制是设计基线参考，不保证等于任一运行时预设的实际值。运行时 `--ds-color-*` 和 `--color-*` 保存 RGB 通道，CSS 写作 `rgb(var(--ds-color-primary))`，需要透明度时可用 `rgb(var(--ds-color-primary) / 12%)`。
+
+| Token | 基线参考 | 用途 |
 | --- | --- | --- |
 | `--ds-color-primary` | `#0066cc` | 主操作、链接、焦点根色 |
 | `--ds-color-primary-focus` | `#0071e3` | 键盘焦点和选中边框 |
@@ -80,22 +100,6 @@
 | `--ds-spacing-section` | `80px` | 分区上下留白 |
 | `--ds-shadow-product` | `rgba(0, 0, 0, 0.22) 3px 5px 30px 0` | 仅用于产品图片 |
 | `--ds-shadow-soft` | `0 16px 40px rgba(17, 24, 39, 0.08)` | 内核现有轻量浮层兼容 |
-
-## Bug 工作台局部覆盖
-
-Bug 页面的圆角以 `DESIGN.md` 中的递进式圆角规则为准。下列覆盖只在 `.bug-page` 及其内部抽屉、图片预览生效，不改写根节点或其他工具的主题值。
-
-| Token | 局部值 | 用途 |
-| --- | --- | --- |
-| `--ds-rounded-lg` | `24px` | 顶部、统计、提报与列表容器、详情抽屉、图片预览 |
-| `--ds-rounded-md` | `12px` | 独立多选浮层 |
-| `--ds-rounded-sm` | `max(var(--ds-rounded-xs), calc(var(--ds-rounded-lg) - var(--ds-spacing-md)))`，默认 `8px` | 内层面板及提报表单控件 |
-| `--ds-rounded-xs` | `4px` | 深层控件、选项、图片缩略图 |
-| `--ds-spacing-md` | `16px` | 外层容器内边距与表单间距 |
-| `--bug-control-radius` | 默认 `--ds-rounded-sm`，深层面板使用 `--ds-rounded-xs` | 按所在层级控制输入框和筛选按钮 |
-| `--bug-corner-shape` | 默认 `round`，通过 `@supports` 后为 `superellipse(1.25)` | 非全圆表面的渐进增强 |
-
-`--ds-rounded-pill` 保持全圆。浮层选项间距使用 `--ds-spacing-xs`（8px），输入框内边距使用 12px，配套 padding / gap 均落在 4px 网格上。
 
 ## 兼容映射
 

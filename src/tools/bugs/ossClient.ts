@@ -60,7 +60,7 @@ export function ossObjectUrl(objectKey: string) {
 }
 
 export function ossPreviewUrl(url: string) {
-  if (!url) return ''
+  if (!/^https?:\/\//i.test(url)) return url
   return `${url}${url.includes('?') ? '&' : '?'}${OSS_PREVIEW_PROCESS}`
 }
 

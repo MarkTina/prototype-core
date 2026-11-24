@@ -253,12 +253,12 @@ onBeforeUnmount(() => {
     <header class="test-case-toolbar">
       <div class="test-case-title-block">
         <button class="test-case-back" type="button" @click="confirmDiscard() && emit('close')"><ArrowLeft />{{ copy.back }}</button>
-        <div><h1>{{ copy.title }}</h1><p>{{ copy.subtitle }}</p></div>
+        <div><p class="pc-eyebrow">QUALITY REGISTER / TEST CASES</p><h1>{{ copy.title }}</h1><p>{{ copy.subtitle }}</p></div>
       </div>
       <div class="test-case-toolbar-actions">
         <button type="button" :disabled="exporting" @click="refreshTestCases(false)"><RefreshCw />{{ copy.refresh }}</button>
         <button type="button" :disabled="exporting" @click="exportAll('json')"><FileJson />{{ copy.json }}</button>
-        <button class="is-primary" type="button" :disabled="exporting" @click="exportAll('excel')"><FileSpreadsheet />{{ copy.excel }}</button>
+        <button type="button" :disabled="exporting" @click="exportAll('excel')"><FileSpreadsheet />{{ copy.excel }}</button>
       </div>
     </header>
 
@@ -300,20 +300,20 @@ onBeforeUnmount(() => {
         </div>
         <p class="test-case-source" :class="`is-${sourceState.status}`">{{ sourceLabel }}<span v-if="sourceState.message"> · {{ sourceState.message }}</span></p>
         <p v-if="notice" class="test-case-notice">{{ notice }}</p>
-        <div class="test-case-table-wrap">
-          <table class="test-case-table">
+        <div class="test-case-table-wrap pc-record-scroll">
+          <table class="test-case-table pc-record-table" :aria-label="copy.title">
             <thead><tr><th>{{ copy.module }}</th><th>{{ copy.item }}</th><th>{{ copy.point }}</th><th>{{ copy.preconditions }}</th><th>{{ copy.steps }}</th><th>{{ copy.expected }}</th><th>{{ copy.actual }}</th><th /></tr></thead>
             <tbody>
               <tr v-for="item in visibleCases" :key="item.id" @click="openEdit(item)">
                 <td><b>{{ item.module }}</b><small v-if="rangeMode === 'all'">{{ scopes(lang).find((scope) => scope.id === testCaseScopeId(item.screenId, item.stateId))?.stateLabel }}</small></td>
-                <td>{{ item.testItem }}</td><td>{{ item.testPoint }}</td><td>{{ item.preconditions }}</td>
+                <td>{{ item.testItem }}</td><td><button type="button" class="pc-record-link" @click.stop="openEdit(item)">{{ item.testPoint }}</button></td><td>{{ item.preconditions }}</td>
                 <td><ol><li v-for="(step, stepIndex) in item.steps" :key="stepIndex">{{ step }}</li></ol></td>
                 <td>{{ item.expectedResult }}</td><td>{{ item.actualResult }}</td>
                 <td><button type="button" :aria-label="copy.delete" @click.stop="remove(item)"><Trash2 /></button></td>
               </tr>
             </tbody>
           </table>
-          <div v-if="!visibleCases.length" class="test-case-empty"><span>✓</span><p>{{ copy.empty }}</p></div>
+          <div v-if="!visibleCases.length" class="test-case-empty" role="status"><p>{{ sourceState.status === 'syncing' ? '正在读取测试用例…' : sourceState.status === 'error' || sourceState.status === 'conflict' ? (sourceState.message || '无法读取测试用例，请刷新重试。') : copy.empty }}</p></div>
         </div>
       </main>
 

@@ -22,6 +22,7 @@ const emit = defineEmits<{
       :key="item.id"
       type="button"
       :class="{ active: activeId === item.id }"
+      :aria-pressed="activeId === item.id"
       @click="emit('change', item.id)"
     >
       <span v-if="highlightedColors?.[item.id]" class="prototype-state-highlight-bookmark" :style="{ backgroundColor: highlightedColors[item.id] }" aria-hidden="true" />

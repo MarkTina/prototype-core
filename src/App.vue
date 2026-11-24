@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { BookOpen, Cloud, Database, FileJson, Keyboard, MessageSquare, PanelLeft } from '@lucide/vue'
+import { BookOpen, Cloud, Database, Ellipsis, FileJson, Keyboard, MessageSquare, PanelLeft, Pencil } from '@lucide/vue'
 import ScreenRenderer from './screens/ScreenRenderer.vue'
 import TabBar from './components/phone/TabBar.vue'
 import PrototypeStateSwitcher from './components/phone/PrototypeStateSwitcher.vue'
@@ -467,7 +467,7 @@ const interactiveSideNavRef = ref<HTMLElement | null>(null)
 const interactiveSideNavCanScrollUp = ref(false)
 const interactiveSideNavCanScrollDown = ref(false)
 const interactiveFlowNavCollapsed = ref(false)
-const dataSourcePanelCollapsed = ref(false)
+const dataSourcePanelCollapsed = ref(true)
 const shortcutPanelCollapsed = ref(true)
 const interactionModeToastVisible = ref(false)
 const productDocumentToastVisible = ref(false)
@@ -525,8 +525,12 @@ const overviewGridRef = ref<HTMLElement | null>(null)
 const overviewStageWidth = ref(0)
 const viewportWidth = ref(1440)
 const viewportHeight = ref(900)
+const themeRailRef = ref<HTMLElement | null>(null)
+const themePopoverRoom = ref<number>()
+const interactiveStageTop = ref(108)
+const fitInteractivePhone = ref(true)
 const overviewPanX = ref(0)
-const overviewPanY = ref(120)
+const overviewPanY = ref(24)
 const isOverviewPanning = ref(false)
 let overviewPanStart = { x: 0, y: 0, panX: 0, panY: 0 }
 const effectiveMode = computed(() => (isMobilePureInteractive.value ? 'interactive' : mode.value))
@@ -1053,6 +1057,10 @@ const overviewItemScale = computed(() => {
 
 const overviewItemWidth = computed(() => Math.round(overviewPhoneWidth * overviewItemScale.value * 100) / 100)
 const overviewScreenHeight = computed(() => Math.round(overviewPhoneHeight * overviewItemScale.value * 100) / 100)
+const interactivePhoneScale = computed(() => fitInteractivePhone.value ? Math.max(0.4, Math.min(1,
+  (viewportHeight.value - interactiveStageTop.value - 96) / overviewPhoneHeight,
+  (overviewStageWidth.value || viewportWidth.value) / overviewPhoneWidth,
+)) : 1)
 
 function desktopDisplayWidth() {
   if (presentationMode.value) {
@@ -1067,7 +1075,11 @@ function desktopDisplayWidth() {
 function screenShellStyle(screen: DisplayScreen) {
   const baseStyle = effectiveMode.value === 'flow' ? flowNodeStyle(screen) : {}
   if (screen.platform !== 'pc') {
-    if (!presentationMode.value) return baseStyle
+    if (!presentationMode.value) {
+      return effectiveMode.value === 'interactive' && !isMobilePureInteractive.value
+        ? { ...baseStyle, '--pc-phone-zoom': String(interactivePhoneScale.value) }
+        : baseStyle
+    }
     const width = Math.min(
       overviewPhoneWidth,
       viewportWidth.value,
@@ -1115,10 +1127,11 @@ function setOverviewZoomAtPoint(nextZoom: number, pointerX: number, pointerY: nu
 }
 
 function stepOverviewCanvasZoom(delta: number) {
+  const stage = overviewStageRef.value
   setOverviewZoomAtPoint(
     overviewZoom.value + delta,
-    viewportWidth.value / 2,
-    viewportHeight.value / 2,
+    (stage?.clientWidth ?? viewportWidth.value) / 2,
+    (stage?.clientHeight ?? viewportHeight.value) / 2,
   )
 }
 
@@ -1126,8 +1139,8 @@ async function resetOverviewCanvasView() {
   overviewZoom.value = 1
   await nextTick()
   const worldWidth = overviewGridRef.value?.offsetWidth ?? 0
-  overviewPanX.value = Math.max(32, (viewportWidth.value - worldWidth) / 2)
-  overviewPanY.value = 120
+  overviewPanX.value = Math.max(24, ((overviewStageRef.value?.clientWidth ?? viewportWidth.value) - worldWidth) / 2)
+  overviewPanY.value = 24
 }
 
 function startOverviewPan(event: MouseEvent) {
@@ -1253,7 +1266,7 @@ const shortcutGroups: ShortcutGroup[] = [
     ],
   },
   {
-    title: '组件控制',
+    title: '面板控制',
     items: [
       { key: 'N', label: '展开 / 收起导航', run: () => { if (mode.value === 'interactive') toggleInteractiveFlowNav() } },
       { key: 'C', label: '展开 / 收起协作', run: () => { if (mode.value === 'interactive') annotationPanelCollapsed.value = !annotationPanelCollapsed.value } },
@@ -1333,7 +1346,7 @@ function loadPanelState() {
     dataSourcePanelCollapsed.value = stored.dataSourceCollapsed
     shortcutPanelCollapsed.value = stored.shortcutsCollapsed
   } catch {
-    console.warn('🧰 [面板状态] 本地缓存无效，已恢复默认展开状态')
+    console.warn('🧰 [面板状态] 本地缓存无效，已恢复默认状态')
     window.localStorage.removeItem(PANEL_STATE_STORAGE_KEY)
   }
 }
@@ -1618,9 +1631,35 @@ function selectMobilePageState(screenId: DisplayScreen['id'], stateId: string) {
 
 function updateOverviewStageWidth() {
   overviewStageWidth.value = overviewStageRef.value?.clientWidth ?? window.innerWidth
+  if (effectiveMode.value === 'interactive' && overviewStageRef.value) {
+    interactiveStageTop.value = overviewStageRef.value.getBoundingClientRect().top + window.scrollY
+  }
   viewportWidth.value = window.innerWidth
   viewportHeight.value = window.innerHeight
 }
+
+watch([showThemePanel, themeRailRef], ([open, rail], _, onCleanup) => {
+  if (!open || !rail) return
+  const updateRoom = () => {
+    themePopoverRoom.value = Math.max(0, window.innerHeight - rail.getBoundingClientRect().bottom)
+  }
+  const observer = new ResizeObserver(updateRoom)
+  observer.observe(rail)
+  window.addEventListener('resize', updateRoom)
+  window.addEventListener('scroll', updateRoom, { passive: true })
+  updateRoom()
+  onCleanup(() => {
+    observer.disconnect()
+    window.removeEventListener('resize', updateRoom)
+    window.removeEventListener('scroll', updateRoom)
+  })
+}, { flush: 'post' })
+
+watch(overviewStageRef, (stage, previous) => {
+  if (previous) overviewResizeObserver?.unobserve(previous)
+  if (stage) overviewResizeObserver?.observe(stage)
+  updateOverviewStageWidth()
+}, { flush: 'post' })
 
 function handleViewportResize() {
   updateOverviewStageWidth()
@@ -1682,16 +1721,17 @@ onBeforeUnmount(() => {
 
 <template>
   <main
-    class="min-h-screen bg-canvas text-ink transition-[padding] duration-200"
+    class="pc-workbench min-h-screen bg-canvas text-ink"
+    :data-workbench-theme="selectedThemeId"
     :class="[
       isMobilePureInteractive ? 'mobile-pure-interactive' : '',
-      appRoute === 'help' || appRoute === 'themeGuide' ? 'prototype-help-route' : appRoute === 'testCases' ? 'test-cases-route' : presentationMode ? 'presentation-mode' : (!isMobilePureInteractive && (showUpdatePrompt ? 'has-update-banner pt-[120px]' : 'pt-[68px]')),
+      appRoute === 'help' || appRoute === 'themeGuide' ? 'prototype-help-route' : appRoute === 'testCases' ? 'test-cases-route' : presentationMode ? 'presentation-mode' : '',
     ]"
     :style="themeStyle"
   >
     <div v-if="showUpdatePrompt && isAuthenticated" class="update-banner">
       <div class="update-banner-inner">
-        <p>🔔 检测到新版本，刷新后即可使用最新页面</p>
+        <p>检测到新版本，刷新后即可使用最新页面</p>
         <div class="update-banner-actions">
           <button type="button" @click="reloadForUpdate">刷新</button>
           <button type="button" aria-label="关闭更新提示" @click="dismissUpdatePrompt">×</button>
@@ -1700,7 +1740,7 @@ onBeforeUnmount(() => {
     </div>
     <PrototypeCoreHelpPage v-if="appRoute === 'help'" @close="closeHelpPage" />
     <PrototypeCoreThemeGuidePage v-else-if="appRoute === 'themeGuide'" @close="closeThemeGuidePage" />
-    <section v-else-if="!isAuthenticated" class="flex min-h-screen items-center justify-center px-5 py-10">
+    <section v-else-if="!isAuthenticated" class="pc-access flex min-h-screen items-center justify-center px-5 py-10">
       <form
         class="w-full max-w-sm rounded-[28px] border border-line bg-panel p-6 text-center shadow-soft"
         @submit.prevent="handleAuthSubmit"
@@ -1733,51 +1773,64 @@ onBeforeUnmount(() => {
     </section>
     <template v-else>
     <div v-if="!isMobilePureInteractive" class="top-chrome">
-    <div class="apple-subnav">
+    <div ref="themeRailRef" class="pc-rail">
       <div class="project-identity">
-        <button class="project-title-btn" type="button" @click="openPrototypePage()">
-          <p class="text-[21px] font-semibold leading-none">{{ productDocumentTitle }}</p>
-          <p class="mt-1 text-xs text-muted">{{ productDocumentDescription }}</p>
+        <button class="project-title-btn" type="button" :title="productDocumentDescription" @click="openPrototypePage()">
+          <span class="pc-rail-mark" aria-hidden="true">PC</span>
+          <span class="pc-project-name">{{ productDocumentTitle }}</span>
         </button>
         <div class="core-version-stack" aria-label="原型内核版本">
           <p><span>内核当前</span><b>v{{ currentCoreVersion }}</b></p>
           <p><span>内核最新</span><b :class="{ 'text-warning': hasNewerCoreVersion }">{{ latestCoreVersionLabel }}</b></p>
         </div>
       </div>
-      <div class="flex flex-wrap items-center justify-end gap-x-1.5 gap-y-2">
+      <nav class="pc-rail-modes" aria-label="工作台模式">
+        <button v-for="view in (['interactive', 'overview', 'flow'] as const)" :key="view" type="button" class="mode-btn" :aria-pressed="appRoute === 'prototype' && mode === view" @click="openPrototypePage(view)">
+          {{ view === 'interactive' ? '交互模式' : view === 'overview' ? '全图模式' : '流程模式' }}
+        </button>
+        <button class="mode-btn" type="button" :aria-pressed="appRoute === 'testCases'" @click="openTestCasePage">测试用例</button>
+        <button class="mode-btn bug-nav-btn" type="button" :aria-pressed="appRoute === 'bugs'" @click="openBugPage">
+          Bug <span v-if="unresolvedBugCount" class="bug-nav-badge">{{ unresolvedBugCount }}</span>
+        </button>
+      </nav>
+      <div class="pc-rail-utilities">
+        <details class="pc-rail-more" @click="($event.target as HTMLElement).closest('button') && ($event.currentTarget as HTMLDetailsElement).removeAttribute('open')">
+          <summary class="mode-btn" aria-label="更多工作台工具"><Ellipsis class="h-4 w-4" /> 工具</summary>
+          <div class="pc-rail-menu">
         <button
-          class="mode-btn top-level-mode-btn rounded-full bg-panel ring-1 ring-line"
+          class="pc-tool-button"
           type="button"
           @click="openProductDocument"
         >
           产品需求文档
         </button>
-        <button class="mode-btn top-level-mode-btn rounded-full bg-panel ring-1 ring-line" :class="{ active: showUpdateHistory }" @click="openUpdateHistory">更新历史</button>
-        <button class="mode-btn top-level-mode-btn rounded-full bg-panel ring-1 ring-line" :class="{ active: showPrototypeHealthPanel }" @click="openPrototypeHealth">
+        <button class="pc-tool-button" type="button" @click="openUpdateHistory">更新历史</button>
+        <button class="pc-tool-button" type="button" @click="openPrototypeHealth">
           健康检查
         </button>
-        <button class="mode-btn top-level-mode-btn rounded-full bg-panel ring-1 ring-line" :class="{ active: appRoute === 'testCases' }" @click="openTestCasePage">
-          测试用例
-        </button>
-        <button class="mode-btn bug-nav-btn rounded-full bg-panel ring-1 ring-line" :class="{ active: appRoute === 'bugs' }" @click="openBugPage">
-          Bug
-          <span v-if="unresolvedBugCount" class="bug-nav-badge">{{ unresolvedBugCount }}</span>
-        </button>
-        <div class="top-control-group flex rounded-full bg-panel ring-1 ring-line">
-          <button class="mode-btn" :class="{ active: appRoute === 'prototype' && mode === 'interactive' }" @click="openPrototypePage('interactive')">交互模式</button>
-          <button class="mode-btn" :class="{ active: appRoute === 'prototype' && mode === 'overview' }" @click="openPrototypePage('overview')">全图模式</button>
-          <button class="mode-btn" :class="{ active: appRoute === 'prototype' && mode === 'flow' }" @click="openPrototypePage('flow')">流程模式</button>
+        <div class="pc-language-switch" role="group" aria-label="原型语言">
+          <button class="pc-tool-button" type="button" :aria-pressed="lang === 'zh'" @click="lang = 'zh'">中文</button>
+          <button class="pc-tool-button" type="button" :aria-pressed="lang === 'en'" @click="lang = 'en'">English</button>
         </div>
-        <div class="top-control-group flex rounded-full bg-panel ring-1 ring-line">
-          <button class="mode-btn" :class="{ active: lang === 'zh' }" @click="lang = 'zh'">中文</button>
-          <button class="mode-btn" :class="{ active: lang === 'en' }" @click="lang = 'en'">English</button>
-        </div>
-          <div class="top-control-group relative flex rounded-full bg-panel ring-1 ring-line">
-          <button class="mode-btn flex items-center gap-2" :class="{ active: showThemePanel }" @click="showThemePanel = !showThemePanel">
+          </div>
+        </details>
+        <div class="pc-rail-theme">
+          <button class="mode-btn flex items-center gap-2" type="button" :aria-expanded="showThemePanel" @click="showThemePanel = !showThemePanel">
             <span class="theme-swatch" :style="{ '--swatch-color': activeDesignColors.primary }" />
             主题切换
           </button>
-          <div v-if="showThemePanel" class="theme-popover">
+          <button
+            class="mode-btn help-nav-btn"
+            type="button"
+            aria-label="打开操作手册"
+            title="操作手册"
+            @click="openHelpPage"
+          >
+            <BookOpen class="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+          <div v-if="showThemePanel" class="theme-popover" :style="themePopoverRoom === undefined ? undefined : { '--pc-theme-popover-room': `${themePopoverRoom}px` }">
             <div class="flex items-start justify-between gap-3">
               <div>
                 <p class="text-sm font-semibold text-ink">主题切换</p>
@@ -1878,17 +1931,6 @@ onBeforeUnmount(() => {
               </label>
             </div>
           </div>
-          <button
-            class="mode-btn help-nav-btn rounded-full bg-panel ring-1 ring-line"
-            type="button"
-            aria-label="打开操作手册"
-            title="操作手册"
-            @click="openHelpPage"
-          >
-            <BookOpen class="h-4 w-4" />
-          </button>
-        </div>
-      </div>
     </div>
     </div>
 
@@ -1901,58 +1943,60 @@ onBeforeUnmount(() => {
       @update:author-name="annotationAuthorName = $event"
       @close="closeTestCasePage"
     />
-    <BugReportPage v-else-if="appRoute === 'bugs' && !isMobilePureInteractive" @close="closeBugPage" />
+    <BugReportPage v-else-if="appRoute === 'bugs'" @close="closeBugPage" />
 
     <section
       v-if="appRoute === 'prototype'"
-      class="prototype-stage mx-auto flex w-full flex-col gap-6 px-4 py-6 lg:px-8"
-      :class="effectiveMode === 'overview' ? 'max-w-none' : effectiveMode === 'interactive' && currentScreenPlatform === 'pc' ? 'max-w-[1504px]' : 'max-w-7xl'"
+      class="prototype-stage"
+      :class="`pc-stage-${effectiveMode}`"
     >
-      <section v-if="!isMobilePureInteractive" class="apple-hero-copy">
-        <div v-if="effectiveMode === 'interactive'" class="page-description-summary-shell">
-          <div class="page-description-source-switcher" aria-label="切换页面描述数据源">
-            <button
-              v-for="option in pageDescriptionSourceOptions"
-              :key="option.source"
-              type="button"
-              :class="{ active: pageDescriptionSelectedSource === option.source }"
-              :aria-pressed="pageDescriptionSelectedSource === option.source"
-              @click="selectPageDescriptionSource(option.source)"
-            >
-              <component :is="option.icon" aria-hidden="true" />
-              <span>{{ option.label }}</span>
-            </button>
-          </div>
-          <button
-            class="page-description-summary"
-            type="button"
-            @click="pageDescriptionSummaryVisible = true; pageDescriptionCopyNotice = ''"
-          >
-            <p><b>页面结构：</b>{{ pageDescriptionSummary.structure }}</p>
-            <p><b>核心功能：</b>{{ pageDescriptionSummary.features }}</p>
+      <section v-if="!isMobilePureInteractive && !presentationMode" class="pc-stage-heading" aria-label="当前画布">
+        <div v-if="effectiveMode === 'interactive'" class="pc-stage-title">
+          <button class="pc-tool-button" type="button" aria-controls="workbench-page-navigation" :aria-expanded="!interactiveFlowNavCollapsed" @click="toggleInteractiveFlowNav">
+            <PanelLeft class="h-4 w-4" aria-hidden="true" />导航 <kbd>N</kbd>
+          </button>
+          <span class="pc-eyebrow">{{ currentScreenPlatform === 'pc' ? 'DESKTOP' : 'MOBILE' }} / {{ currentMeta.code }}</span>
+          <h1>{{ currentMeta.title }}</h1>
+          <span v-if="currentPrototypeStateLabel" class="pc-scope-state">{{ currentPrototypeStateLabel }}</span>
+        </div>
+        <div v-else class="pc-stage-title">
+          <span class="pc-eyebrow">{{ effectiveMode === 'overview' ? 'ATLAS' : 'FLOW' }}</span>
+          <h1>{{ effectiveMode === 'overview' ? '页面全图' : '主流程' }}</h1>
+          <span class="pc-stage-subtitle">{{ productText('heroCopy', currentMeta.subtitle) }}</span>
+        </div>
+        <div v-if="effectiveMode === 'interactive'" class="pc-stage-actions">
+          <button v-if="currentScreenPlatform === 'mobile'" type="button" class="pc-tool-button" :aria-pressed="fitInteractivePhone" @click="fitInteractivePhone = !fitInteractivePhone">{{ fitInteractivePhone ? `适应视口 · ${Math.round(interactivePhoneScale * 100)}%` : '原尺寸 · 100%' }}</button>
+          <button type="button" class="pc-tool-button" @click="togglePresentationMode">演示模式</button>
+          <button class="pc-tool-button" type="button" aria-controls="workbench-page-collaboration" :aria-expanded="!annotationPanelCollapsed" @click="annotationPanelCollapsed = !annotationPanelCollapsed">
+            <MessageSquare class="h-4 w-4" aria-hidden="true" />协作（注释 / 描述） <kbd>C</kbd>
           </button>
         </div>
-        <p v-else>{{ productText('heroCopy', currentMeta.subtitle) }}</p>
       </section>
 
-      <div class="flex flex-col gap-6 lg:flex-row">
+      <section v-if="effectiveMode === 'interactive' && !isMobilePureInteractive && !presentationMode" class="pc-page-description" aria-labelledby="pc-page-description-title">
+        <div class="pc-page-description-head">
+          <h2 id="pc-page-description-title">页面描述</h2>
+          <button class="pc-tool-button" type="button" @click="pageDescriptionSummaryVisible = true; pageDescriptionCopyNotice = ''">查看全部</button>
+        </div>
+        <div v-if="currentPageDescription" class="pc-page-description-body">
+          <p><b>页面结构：</b>{{ pageDescriptionSummary.structure }}</p>
+          <p><b>核心功能：</b>{{ pageDescriptionSummary.features }}</p>
+        </div>
+        <p v-else class="pc-page-description-empty">{{ coreText('pageDescriptionEmpty') }}</p>
+      </section>
+
+      <div class="pc-stage-layout" :class="{ 'pc-nav-collapsed': interactiveFlowNavCollapsed, 'pc-inspector-collapsed': annotationPanelCollapsed }">
         <aside
-          v-if="effectiveMode === 'interactive' && !isMobilePureInteractive"
-          class="apple-side-nav interactive-side-nav"
+          v-if="effectiveMode === 'interactive' && !isMobilePureInteractive && !presentationMode"
+          v-show="!interactiveFlowNavCollapsed"
+          id="workbench-page-navigation"
+          class="interactive-side-nav"
           :class="{
             'can-scroll-up': interactiveSideNavCanScrollUp,
             'can-scroll-down': interactiveSideNavCanScrollDown,
-            collapsed: interactiveFlowNavCollapsed,
           }"
         >
-          <button
-            class="annotation-panel-tab interactive-flow-nav-tab"
-            type="button"
-            @click="toggleInteractiveFlowNav"
-          >
-            <PanelLeft class="h-4 w-4" />
-            {{ interactiveFlowNavCollapsed ? '展开导航' : '收起导航' }} (N)
-          </button>
+          <h2 class="pc-pane-title">页面目录</h2>
           <div v-if="!interactiveFlowNavCollapsed" class="interactive-side-nav-scroll-wrap">
             <div
               ref="interactiveSideNavRef"
@@ -1964,6 +2008,7 @@ onBeforeUnmount(() => {
                 :key="screen.id"
                 class="nav-row"
                 :class="{ active: currentScreen === screen.id }"
+                :aria-current="currentScreen === screen.id ? 'page' : undefined"
                 @click="goToAnnotatedScreen(screen.id)"
               >
                 <span
@@ -1987,10 +2032,18 @@ onBeforeUnmount(() => {
             <svg v-if="interactiveSideNavCanScrollUp" class="side-nav-scroll-hint-top" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
             <svg v-if="interactiveSideNavCanScrollDown" class="side-nav-scroll-hint-bottom" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
           </div>
+          <PrototypeStateSwitcher
+            v-if="!interactiveFlowNavCollapsed && !presentationMode && prototypeStateOptions.length && activePrototypeStateId"
+            :title="coreText('prototypeStateSwitch')"
+            :options="prototypeStateOptions"
+            :active-id="activePrototypeStateId"
+            :count-for-state="(stateId) => annotationCountByState(currentScreen, stateId)"
+            :highlighted-colors="activeScreenHighlightedStateColors"
+            @change="setPrototypeState(currentScreen, $event)"
+          />
         </aside>
 
-        <aside v-if="effectiveMode === 'overview'" class="apple-side-nav overview-side-nav">
-          <p class="px-2 pb-3 text-sm font-semibold text-muted">显示设置</p>
+        <aside v-if="effectiveMode === 'overview'" class="overview-side-nav" aria-label="全图显示设置">
           <div class="px-2 pb-4">
             <label class="mb-2 block text-xs font-semibold text-muted">每行数量</label>
             <div class="flex items-center gap-3">
@@ -2011,34 +2064,22 @@ onBeforeUnmount(() => {
           </div>
         </aside>
 
-        <aside v-if="effectiveMode === 'flow'" class="apple-side-nav flow-side-nav lg:w-80">
-          <div class="flex items-center justify-between px-2 pb-3">
-            <p class="text-sm font-semibold text-muted">主流程</p>
+        <aside v-if="effectiveMode === 'flow'" class="flow-side-nav" aria-label="流程选择和画布工具">
+          <div class="pc-flow-picker">
+            <label class="pc-eyebrow" for="workbench-flow">主流程</label>
+            <select id="workbench-flow" class="pc-field" :value="selectedFlowId" @change="selectFlow(($event.target as HTMLSelectElement).value)">
+              <option v-for="flow in mainFlows" :key="flow.id" :value="flow.id">{{ flow.title }}</option>
+            </select>
             <button
-              class="flex items-center gap-1 rounded-lg bg-soft px-2.5 py-1 text-xs font-medium text-ink hover:bg-canvas transition"
+              class="pc-tool-button pc-primary"
+              type="button"
               @click="showFlowEditor = true"
             >
-              <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+              <Pencil class="h-4 w-4" aria-hidden="true" />
               编辑流程
             </button>
           </div>
-          <button
-            v-for="flow in mainFlows"
-            :key="flow.id"
-            class="nav-row flow-nav-row"
-            :class="{ active: selectedFlowId === flow.id }"
-            @click="selectFlow(flow.id)"
-          >
-            <span class="flow-dot" />
-            <span class="min-w-0 flex-1 text-left">
-              <b>{{ flow.title }}</b>
-              <small>{{ flow.subtitle }}</small>
-            </span>
-          </button>
-        </aside>
-
-        <section ref="overviewStageRef" class="flex-1 relative">
-          <div v-if="effectiveMode === 'flow'" class="flow-toolbar">
+          <div class="flow-toolbar">
             <div class="flow-zoom-controls">
               <button type="button" @click="stepFlowZoom(0.06)">+</button>
               <input v-model.number="flowZoom" min="0.25" max="0.9" step="0.01" type="range" aria-label="流程画布缩放" />
@@ -2047,6 +2088,9 @@ onBeforeUnmount(() => {
               <button type="button" aria-label="重置画布" title="重置画布" @click="resetFlowView">↺</button>
             </div>
           </div>
+        </aside>
+
+        <section ref="overviewStageRef" class="pc-canvas-region" aria-label="原型画布">
           <div
             :class="[
               effectiveMode === 'overview' ? 'overview-canvas' : effectiveMode === 'flow' ? 'flow-grid' : 'grid gap-6 place-items-center',
@@ -2093,15 +2137,6 @@ onBeforeUnmount(() => {
                   'overview-desktop-scale': effectiveMode === 'overview' && screen.platform === 'pc',
                 }"
               >
-                <PrototypeStateSwitcher
-                  v-if="effectiveMode === 'interactive' && !isMobilePureInteractive && screen.platform === 'mobile' && prototypeStateOptions.length && activePrototypeStateId"
-                  :title="coreText('prototypeStateSwitch')"
-                  :options="prototypeStateOptions"
-                  :active-id="activePrototypeStateId"
-                  :count-for-state="(stateId) => annotationCountByState(currentScreen, stateId)"
-                  :highlighted-colors="activeScreenHighlightedStateColors"
-                  @change="setPrototypeState(currentScreen, $event)"
-                />
                 <div :class="screen.platform === 'pc' ? 'desktop-frame' : 'phone-screen'">
                   <div v-if="screen.platform === 'mobile' && !isMobilePureInteractive" class="status-bar">
                     <span>9:41</span>
@@ -2174,17 +2209,13 @@ onBeforeUnmount(() => {
             </div>
           </div>
         </section>
-      </div>
-    </section>
     <aside
-      v-if="appRoute === 'prototype' && effectiveMode === 'interactive' && !isMobilePureInteractive"
+      v-if="effectiveMode === 'interactive' && !isMobilePureInteractive && !presentationMode"
+      v-show="!annotationPanelCollapsed"
+      id="workbench-page-collaboration"
       class="annotation-side-panel"
-      :class="{ collapsed: annotationPanelCollapsed, 'description-view-mode': activeCollaborationTab === 'pageDescription' }"
+      :class="{ 'description-view-mode': activeCollaborationTab === 'pageDescription' }"
     >
-      <button class="annotation-panel-tab" type="button" @click="annotationPanelCollapsed = !annotationPanelCollapsed">
-        <MessageSquare class="h-4 w-4" />
-        {{ annotationPanelCollapsed ? coreText('annotationExpand') : coreText('annotationCollapse') }} (C)
-      </button>
       <template v-if="!annotationPanelCollapsed">
         <div class="annotation-panel-head">
           <div>
@@ -2194,12 +2225,21 @@ onBeforeUnmount(() => {
           <strong>{{ activeCollaborationTab === 'annotations' ? currentScreenAnnotations.length : currentPageDescription ? 1 : 0 }}</strong>
         </div>
         <div class="annotation-panel-tabs">
-          <button type="button" :class="{ active: activeCollaborationTab === 'annotations' }" @click="activeCollaborationTab = 'annotations'">
+          <button type="button" :class="{ active: activeCollaborationTab === 'annotations' }" :aria-pressed="activeCollaborationTab === 'annotations'" @click="activeCollaborationTab = 'annotations'">
             {{ coreText('annotationTabNotes') }}
           </button>
-          <button type="button" :class="{ active: activeCollaborationTab === 'pageDescription' }" @click="activeCollaborationTab = 'pageDescription'; cancelAnnotationDraft()">
+          <button type="button" :class="{ active: activeCollaborationTab === 'pageDescription' }" :aria-pressed="activeCollaborationTab === 'pageDescription'" @click="activeCollaborationTab = 'pageDescription'; cancelAnnotationDraft()">
             {{ coreText('annotationTabDescription') }}
           </button>
+        </div>
+        <div v-if="activeCollaborationTab === 'pageDescription'" class="pc-description-context">
+          <span class="pc-eyebrow">数据来源</span>
+          <div class="page-description-source-switcher" aria-label="切换页面描述数据源">
+            <button v-for="option in pageDescriptionSourceOptions" :key="option.source" type="button" :class="{ active: pageDescriptionSelectedSource === option.source }" :aria-pressed="pageDescriptionSelectedSource === option.source" @click="selectPageDescriptionSource(option.source)">
+              <component :is="option.icon" aria-hidden="true" />{{ option.label }}
+            </button>
+          </div>
+          <button class="pc-tool-button" type="button" @click="pageDescriptionSummaryVisible = true; pageDescriptionCopyNotice = ''">查看描述摘要</button>
         </div>
         <div v-if="activeCollaborationTab === 'annotations'" class="annotation-panel-actions">
           <button type="button" :class="{ active: isPlacingAnnotation }" @click="startAnnotationPlacement">
@@ -2278,40 +2318,61 @@ onBeforeUnmount(() => {
         </div>
       </template>
     </aside>
-    <section
-      v-if="appRoute === 'prototype' && collaborationInitialized && !isMobilePureInteractive && !presentationMode"
-      class="collaboration-source-card"
-      :class="[`is-${collaborationSourceTone}`, { collapsed: dataSourcePanelCollapsed }]"
-      aria-live="polite"
-      aria-label="当前协作数据来源"
-    >
-      <button class="annotation-panel-tab collaboration-source-toggle" type="button" @click="dataSourcePanelCollapsed = !dataSourcePanelCollapsed">
-        <Database class="h-4 w-4" />
-        {{ dataSourcePanelCollapsed ? '展开数据源' : '收起数据源' }} (D)
-      </button>
-      <template v-if="!dataSourcePanelCollapsed">
-        <div class="collaboration-source-title">
-          <span aria-hidden="true">{{ collaborationSourceTone === 'warning' || collaborationSourceTone === 'conflict' ? '⚠' : '●' }}</span>
-          <strong>{{ collaborationCardTitle }}</strong>
-          <small>· {{ collaborationBranchLabel }}<template v-if="collaborationTimeLabel"> · {{ collaborationTimeLabel }}</template></small>
-        </div>
-        <p>{{ collaborationKindSummary }}</p>
-        <button
-          v-if="canInitializeRemote"
-          class="collaboration-initialize-btn"
-          type="button"
-          :disabled="collaborationBootstrapStatus === 'running'"
-          @click="initializeRemoteCollaborationData"
-        >
-          {{ collaborationBootstrapStatus === 'running' ? `${collaborationBootstrapProgress.current}/${collaborationBootstrapProgress.total}` : collaborationAllRemote ? '检查远端资料' : '初始化到 Gitee' }}
-        </button>
-        <button class="environment-check-trigger" type="button" @click="showEnvironmentCheckPanel = true">
-          检查本地环境变量
-        </button>
-      </template>
+      </div>
     </section>
-    <div v-if="showEnvironmentCheckPanel" class="environment-check-backdrop" @click.self="showEnvironmentCheckPanel = false">
-      <section class="environment-check-panel" role="dialog" aria-modal="true" aria-labelledby="environment-check-title">
+    <footer v-if="appRoute === 'prototype' && !isMobilePureInteractive && !presentationMode" class="pc-stage-footer">
+      <div v-if="collaborationInitialized" class="pc-footer-tool">
+        <button id="workbench-source-toggle" class="pc-tool-button" type="button" aria-controls="workbench-source-panel" :aria-expanded="!dataSourcePanelCollapsed" @click="dataSourcePanelCollapsed = !dataSourcePanelCollapsed">
+          <Database class="h-4 w-4" aria-hidden="true" />数据源 <kbd>D</kbd>
+        </button>
+        <section v-show="!dataSourcePanelCollapsed" id="workbench-source-panel" class="pc-footer-popover collaboration-source-card" :class="`is-${collaborationSourceTone}`" aria-label="当前协作数据来源">
+          <h2>当前协作数据来源</h2>
+          <div aria-live="polite">
+            <div class="collaboration-source-title">
+              <strong>{{ collaborationCardTitle }}</strong>
+              <small>· {{ collaborationBranchLabel }}<template v-if="collaborationTimeLabel"> · {{ collaborationTimeLabel }}</template></small>
+            </div>
+            <p>{{ collaborationKindSummary }}</p>
+          </div>
+          <div class="pc-source-actions">
+            <button
+              v-if="canInitializeRemote"
+              class="collaboration-initialize-btn"
+              type="button"
+              :disabled="collaborationBootstrapStatus === 'running'"
+              @click="initializeRemoteCollaborationData"
+            >
+              {{ collaborationBootstrapStatus === 'running' ? `${collaborationBootstrapProgress.current}/${collaborationBootstrapProgress.total}` : collaborationAllRemote ? '检查远端资料' : '初始化到 Gitee' }}
+            </button>
+            <button class="environment-check-trigger" type="button" @click="showEnvironmentCheckPanel = true">
+              检查本地环境变量
+            </button>
+          </div>
+        </section>
+      </div>
+      <div class="pc-footer-tool pc-footer-shortcuts">
+        <button id="workbench-shortcuts-toggle" class="pc-tool-button" type="button" aria-controls="workbench-shortcuts-panel" :aria-expanded="!shortcutPanelCollapsed" @click="shortcutPanelCollapsed = !shortcutPanelCollapsed">
+          <Keyboard class="h-4 w-4" aria-hidden="true" />快捷键 <kbd>K</kbd>
+        </button>
+        <aside v-show="!shortcutPanelCollapsed" id="workbench-shortcuts-panel" class="pc-footer-popover shortcut-panel" aria-labelledby="workbench-shortcuts-title" tabindex="0">
+          <div class="shortcut-panel-head">
+            <h2 id="workbench-shortcuts-title">键盘快捷键</h2>
+            <span>输入时不触发</span>
+          </div>
+          <section v-for="group in shortcutGroups" :key="group.title" class="shortcut-group">
+            <h3>{{ group.title }}</h3>
+            <dl>
+              <div v-for="item in group.items" :key="item.key" class="shortcut-row">
+                <dt><kbd>{{ item.key }}</kbd></dt>
+                <dd>{{ item.label }}</dd>
+              </div>
+            </dl>
+          </section>
+        </aside>
+      </div>
+    </footer>
+    <div v-if="showEnvironmentCheckPanel && appRoute === 'prototype' && !isMobilePureInteractive && !presentationMode" class="environment-check-backdrop pc-scrim" @click.self="showEnvironmentCheckPanel = false">
+      <section class="environment-check-panel pc-dialog" role="dialog" aria-modal="true" aria-labelledby="environment-check-title">
         <header>
           <div>
             <h2 id="environment-check-title">环境变量检查</h2>
@@ -2335,30 +2396,6 @@ onBeforeUnmount(() => {
         <footer>仅检查配置是否存在，不读取、展示或记录任何配置值。</footer>
       </section>
     </div>
-    <aside
-      v-if="appRoute === 'prototype' && !isMobilePureInteractive && !presentationMode"
-      class="shortcut-panel"
-      :class="{ collapsed: shortcutPanelCollapsed }"
-      aria-label="快捷键"
-    >
-      <button class="annotation-panel-tab shortcut-panel-toggle" type="button" @click="shortcutPanelCollapsed = !shortcutPanelCollapsed">
-        <Keyboard class="h-4 w-4" />
-        {{ shortcutPanelCollapsed ? '快捷键' : '收起快捷键' }} (K)
-      </button>
-      <template v-if="!shortcutPanelCollapsed">
-        <div class="shortcut-panel-head">
-          <strong>当前面板快捷键</strong>
-          <span>输入内容时自动停用</span>
-        </div>
-        <section v-for="group in shortcutGroups" :key="group.title" class="shortcut-group">
-          <h3>{{ group.title }}</h3>
-          <div v-for="item in group.items" :key="item.key" class="shortcut-row">
-            <kbd>{{ item.key }}</kbd>
-            <span>{{ item.label }}</span>
-          </div>
-        </section>
-      </template>
-    </aside>
     <Transition name="shortcut-toast">
       <div v-if="appRoute === 'prototype' && interactionModeToastVisible && !isMobilePureInteractive && !presentationMode" class="interaction-mode-toast" role="status">
         按快捷键 P 可以进入/退出演示模式
@@ -2369,8 +2406,8 @@ onBeforeUnmount(() => {
         还未配置产品文档地址，请在 PrototypeProductDefinition.document.url 中配置
       </div>
     </Transition>
-    <div v-if="appRoute === 'prototype' && pageDescriptionEditing && !isMobilePureInteractive" class="page-description-dialog-backdrop" @click.self="cancelPageDescriptionEdit">
-      <section class="page-description-dialog">
+    <div v-if="appRoute === 'prototype' && pageDescriptionEditing && !isMobilePureInteractive" class="page-description-dialog-backdrop pc-scrim" @click.self="cancelPageDescriptionEdit">
+      <section class="page-description-dialog pc-dialog">
         <div class="page-description-dialog-head">
           <div>
             <p>{{ currentPageDescription ? '编辑页面描述' : '新增页面描述' }}</p>
@@ -2499,7 +2536,7 @@ onBeforeUnmount(() => {
       <small>{{ hoveredAnnotation.specialNote }}</small>
     </div>
     <div v-if="appRoute === 'prototype' && annotationDraft && !isMobilePureInteractive" class="annotation-form-backdrop">
-      <form class="annotation-form" @submit.prevent="saveAnnotationDraft">
+      <form class="annotation-form pc-dialog" @submit.prevent="saveAnnotationDraft">
         <h3>{{ coreText('annotationFormTitle') }}</h3>
         <label>
           <span>{{ coreText('annotationFeatureName') }}</span>
@@ -2549,7 +2586,7 @@ onBeforeUnmount(() => {
       </form>
     </div>
     <div v-if="appRoute === 'prototype' && activeAnnotation && !isMobilePureInteractive" class="annotation-form-backdrop">
-      <form class="annotation-form" @submit.prevent="saveAnnotationEdit">
+      <form class="annotation-form pc-dialog" @submit.prevent="saveAnnotationEdit">
         <h3>{{ annotationDialogMode === 'edit' ? coreText('annotationEditTitle') : coreText('annotationDetailTitle') }}</h3>
         <label>
           <span>{{ coreText('annotationFeatureName') }}</span>
@@ -2600,7 +2637,7 @@ onBeforeUnmount(() => {
       </form>
     </div>
     <div v-if="appRoute === 'prototype' && pageDescriptionSummaryVisible && !isMobilePureInteractive" class="page-description-summary-backdrop" @click.self="pageDescriptionSummaryVisible = false">
-      <section class="page-description-summary-dialog">
+      <section class="page-description-summary-dialog pc-dialog">
         <div class="page-description-summary-head">
           <div>
             <p>页面描述</p>
@@ -2712,14 +2749,14 @@ onBeforeUnmount(() => {
         </div>
       </section>
     </div>
-    <div v-if="appRoute === 'prototype' && showUpdateHistory && !isMobilePureInteractive" class="fixed inset-0 z-[130] flex items-center justify-center bg-black/35 px-4" @click.self="showUpdateHistory = false">
-      <section class="w-full max-w-xl rounded-[24px] border border-line bg-panel p-5 text-left shadow-[0_24px_70px_rgb(0_0_0/0.18)]">
+    <div v-if="appRoute === 'prototype' && showUpdateHistory && !isMobilePureInteractive" class="pc-scrim fixed inset-0 z-[130] flex items-center justify-center px-4" @click.self="showUpdateHistory = false">
+      <section class="pc-dialog w-full max-w-xl border p-5 text-left" role="dialog" aria-label="更新历史">
         <div class="flex items-start justify-between gap-4">
           <div>
             <h2 class="text-lg font-semibold text-ink">更新历史</h2>
             <p class="mt-1 text-xs text-muted">最近一次更新时间：{{ latestUpdateTime }}</p>
           </div>
-          <button class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-soft text-base font-semibold text-ink" @click="showUpdateHistory = false">
+          <button class="pc-tool-button" type="button" aria-label="关闭更新历史" @click="showUpdateHistory = false">
             ×
           </button>
         </div>

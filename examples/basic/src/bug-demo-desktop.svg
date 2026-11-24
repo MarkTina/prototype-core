@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="600" viewBox="0 0 960 600">
+  <rect width="960" height="600" fill="#e9eff8"/>
+  <rect x="48" y="48" width="864" height="504" rx="18" fill="#fff" stroke="#aebed4" stroke-width="2"/>
+  <rect x="48" y="48" width="864" height="68" rx="18" fill="#172a46"/>
+  <rect x="48" y="92" width="864" height="24" fill="#172a46"/>
+  <g font-family="Microsoft YaHei, sans-serif">
+    <text x="80" y="91" font-size="22" fill="#fff" font-weight="700">示例项目 / 任务列表</text>
+    <text x="880" y="91" font-size="15" text-anchor="end" fill="#c6d8ef">桌面端 · 实际表现</text>
+    <text x="88" y="177" font-size="32" font-weight="700" fill="#172a46">我的任务</text>
+    <text x="88" y="211" font-size="17" fill="#53647b">刷新后，状态筛选恢复成了“全部状态”。</text>
+    <rect x="88" y="238" width="190" height="56" rx="8" fill="#fff3ef" stroke="#b74438" stroke-width="3"/>
+    <text x="106" y="272" font-size="19" font-weight="700" fill="#8c2f27">全部状态</text>
+    <text x="296" y="273" font-size="17" fill="#8c2f27">此处应保留“仅待处理”</text>
+    <rect x="88" y="325" width="784" height="177" rx="8" fill="#f5f7fa" stroke="#d8e0eb"/>
+    <text x="108" y="357" font-size="16" fill="#53647b">任务名称</text>
+    <text x="704" y="357" font-size="16" fill="#53647b">状态</text>
+    <line x1="88" y1="370" x2="872" y2="370" stroke="#d8e0eb"/>
+    <text x="108" y="406" font-size="20" fill="#172a46">更新空状态提示</text>
+    <text x="704" y="406" font-size="18" fill="#8c2f27">待处理</text>
+    <line x1="88" y1="426" x2="872" y2="426" stroke="#d8e0eb"/>
+    <text x="108" y="465" font-size="20" fill="#172a46">核对首页间距</text>
+    <text x="704" y="465" font-size="18" fill="#235c49">已完成</text>
+  </g>
+</svg>

@@ -305,8 +305,8 @@ const customThemeConfig = ref<PrototypeThemeConfig>(createThemeConfig())
 const showThemePanel = ref(false)
 const themeImportInput = ref<HTMLInputElement | null>(null)
 const flowZoom = ref(0.42)
-const flowPanX = ref(360)
-const flowPanY = ref(150)
+const flowPanX = ref(24)
+const flowPanY = ref(24)
 const isFlowPanning = ref(false)
 const flowPanStart = ref({ x: 0, y: 0, panX: 0, panY: 0 })
 const defaultTabScreen = pages.find((page) => page.platform === 'mobile' && page.hasTabBar)
@@ -1650,8 +1650,8 @@ function stepFlowZoom(delta: number) {
 }
 
 function resetFlowView() {
-  flowPanX.value = 360
-  flowPanY.value = 150
+  flowPanX.value = 24
+  flowPanY.value = 24
   flowZoom.value = 0.42
 }
 

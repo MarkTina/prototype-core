@@ -359,9 +359,9 @@ function handleClose() {
 </script>
 
 <template>
-  <div class="fixed inset-0 z-[200] bg-canvas flex flex-col">
+  <div class="pc-flow-editor fixed inset-0 z-[200] bg-canvas flex flex-col">
     <!-- 顶部工具栏 -->
-    <header class="flex items-center justify-between px-6 py-3 border-b border-line bg-panel relative">
+    <header class="pc-flow-editor-bar flex items-center justify-between px-6 py-3 border-b border-line bg-panel relative">
       <div class="flex items-center gap-3">
         <h2 class="text-lg font-semibold text-ink">流程编排</h2>
         <span class="text-xs text-muted">
@@ -380,7 +380,7 @@ function handleClose() {
       </Transition>
       <div class="flex items-center gap-2">
         <button
-          class="flex items-center gap-1.5 rounded-lg bg-soft px-3 py-1.5 text-sm font-medium text-ink hover:bg-canvas transition"
+          class="pc-tool-button pc-primary"
           :disabled="savingToSession"
           @click="handleSave"
         >
@@ -388,7 +388,7 @@ function handleClose() {
           {{ savingToSession ? '保存中…' : '保存到当前会话' }}
         </button>
         <button
-          class="flex items-center gap-1.5 rounded-lg bg-ink px-3 py-1.5 text-sm font-medium text-white transition hover:bg-ocean disabled:cursor-not-allowed disabled:opacity-40"
+          class="pc-tool-button"
           :disabled="pushingToRemote || !canPushRemote"
           :title="canPushRemote ? '推送到当前代码分支的 Gitee 流程文件' : 'Gitee 未配置或当前代码分支不可识别'"
           @click="handlePush"
@@ -397,14 +397,15 @@ function handleClose() {
           {{ pushingToRemote ? '推送中…' : '推送到 Gitee' }}
         </button>
         <button
-          class="flex items-center gap-1.5 rounded-lg bg-ocean px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 transition"
+          class="pc-tool-button"
           @click="handleExport"
         >
           <Download class="h-4 w-4" />
           导出 JSON
         </button>
         <button
-          class="flex h-8 w-8 items-center justify-center rounded-full bg-soft text-ink hover:bg-canvas transition"
+          class="pc-tool-button"
+          aria-label="关闭流程编排"
           @click="handleClose"
         >
           <X class="h-4 w-4" />
@@ -413,7 +414,7 @@ function handleClose() {
     </header>
 
     <!-- 主体：左中右 -->
-    <div class="grid grid-cols-[1fr_3fr_1fr] flex-1 overflow-hidden">
+    <div class="pc-flow-editor-layout grid flex-1 overflow-hidden">
       <!-- 左侧：流程导航 -->
       <aside class="min-w-[200px] border-r border-line bg-panel flex flex-col overflow-hidden">
         <div class="p-4 border-b border-line">

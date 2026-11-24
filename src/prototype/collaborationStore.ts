@@ -4,6 +4,7 @@ import { getPrototypeRuntime } from '../core/productAdapter'
 
 const CACHE_SCHEMA_VERSION = 3 as const
 const sessionCache = new Map<string, string | null>()
+type FileCacheKind = CollaborationDataKind | 'bugs' | 'bug-versions' | `bugs:${string}`
 
 function readStored(key: string) {
   if (sessionCache.has(key)) return sessionCache.get(key) ?? null
@@ -72,7 +73,7 @@ function storage() {
   return window.localStorage
 }
 
-function cacheKey(kind: CollaborationDataKind | 'bugs') {
+export function collaborationContextStorageKey(kind: string) {
   const context = getCollaborationContext()
   return collaborationCacheKey(
     [context.provider || 'local', context.owner || 'none', context.repo || 'none', context.remoteBranch, context.projectId, context.branchKey],
@@ -80,9 +81,11 @@ function cacheKey(kind: CollaborationDataKind | 'bugs') {
   )
 }
 
-export function readCollaborationCache<T>(kind: CollaborationDataKind | 'bugs'): CollaborationCacheSnapshot<T> | null {
+const cacheKey = collaborationContextStorageKey
+
+export function readCollaborationCache<T>(kind: FileCacheKind): CollaborationCacheSnapshot<T> | null {
   try {
-    const value = JSON.parse(readStored(cacheKey(kind)) ?? 'null') as CollaborationCacheSnapshot<T> | null
+    const value = JSON.parse(readStored(collaborationContextStorageKey(kind)) ?? 'null') as CollaborationCacheSnapshot<T> | null
     return value?.schemaVersion === CACHE_SCHEMA_VERSION && 'value' in value ? value : null
   } catch {
     return null
@@ -90,7 +93,7 @@ export function readCollaborationCache<T>(kind: CollaborationDataKind | 'bugs'):
 }
 
 export function writeCollaborationCache<T>(
-  kind: CollaborationDataKind | 'bugs',
+  kind: FileCacheKind,
   value: T,
   revision: string | null,
   lastRemoteSyncAt: string | null,
@@ -109,14 +112,14 @@ export function writeCollaborationCache<T>(
     baseRevision: status === 'pending' ? baseRevision !== undefined ? baseRevision : previous?.status === 'pending' ? previous.baseRevision !== undefined ? previous.baseRevision : previous.revision : revision : revision,
     ...(error ? { error } : {}),
   }
-  return writeStored(cacheKey(kind), snapshot)
+  return writeStored(collaborationContextStorageKey(kind), snapshot)
 }
 
 export function migrateFileCollaborationCache<T>(kind: 'flows' | 'bugs'): CollaborationCacheSnapshot<T> | null {
   const current = readCollaborationCache<T>(kind)
   if (current) return current
   try {
-    const legacy = JSON.parse(readStored(cacheKey(kind)) ?? 'null') as unknown
+    const legacy = JSON.parse(readStored(collaborationContextStorageKey(kind)) ?? 'null') as unknown
     const value = kind === 'bugs' && Array.isArray(legacy)
       ? legacy as T
       : legacy && typeof legacy === 'object' && (legacy as { schemaVersion?: number }).schemaVersion === 2
@@ -131,7 +134,7 @@ export function migrateFileCollaborationCache<T>(kind: 'flows' | 'bugs'): Collab
 
 export function readLegacyCollaborationCache<T>(kind: CollaborationDataKind | 'bugs') {
   try {
-    const value = JSON.parse(readStored(cacheKey(kind)) ?? 'null') as { schemaVersion?: number; value?: T; revision?: string | null; lastRemoteSyncAt?: string | null } | null
+    const value = JSON.parse(readStored(collaborationContextStorageKey(kind)) ?? 'null') as { schemaVersion?: number; value?: T; revision?: string | null; lastRemoteSyncAt?: string | null } | null
     return value?.schemaVersion === 2 && 'value' in value ? value : null
   } catch {
     return null

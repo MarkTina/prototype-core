@@ -1,3 +1,24 @@
+# Prototype Core 设计规则
+
+## 内核工作台：原型审阅台
+
+- 内核新界面先查 `DESIGN-TOKENS.md`，从 `src/workbench/workbench.css` 复用 `--pc-*` 的角色与尺寸。不要在页面里重复声明颜色、圆角或控件尺寸。不将 `--pc-*` 作为消费者公开契约。
+- 全局导航放模式、测试用例、Bug 和主题；低频辅助入口归入工具。交互模式按「页面目录 / 消费者原型画布 / 当前范围协作」排列，收拢侧栏不保留栏宽，工具栏保留开关；全图和流程将控制项移到画布上方。数据源和快捷键从底栏向上展开，内容在面板内滚动，不推挤画布。
+- 交互模式的页面描述常驻当前页面标题下方，直接显示页面结构和核心功能；完整描述、筛选和复制由「查看全部」打开。描述区在消费者画布和注释定位层之外，不随导航或协作栏收起。
+- 内容区用平面和细分隔线组织。弹出层才用阴影。桌面控件 36px，触屏目标至少 44px，正文 14px，宽表 13px，元信息 12px；标识和倍率用等宽数字。
+- 按钮用 `pc-tool-button`，目前主操作附加 `pc-primary`；每个操作区同一层级保持一个主操作。原生输入使用 `pc-field` 或当前工作台的输入样式；焦点、选中、禁用不能只用颜色表达。
+- Bug 与用例列表复用 `pc-record-scroll`、`pc-record-table`、`pc-record-link`，状态使用有文案的语义标签。搜索、范围和版本不同，不强行共用数据逻辑。
+- Bug 与用例工作区共用居中限宽和响应式边距；Bug 右侧详情在桌面使用 45rem，窄屏不超出视口。
+- Bug 工作台桌面左栏常驻提报，右栏放筛选与列表；低于 1024px 时改为单栏，提报默认收起。有截图的工单在标题下展示最多两张缩略图，多余截图以数量按钮进入同一个大图预览；无图工单不预留图片空间。
+- 数据来源与同步状态分别展示；缓存、种子、待推送及远端已同步不可混称。过滤与展示不改变数据读写、冲突或导出规则。
+- 内核新增图标使用现有 Lucide；消费者继续按 Iconify 规则。工作台样式不进入消费者画布。演示和移动纯交互不显示桌面工作台外壳。
+- 布局改动用实际示例核对移动端、PC、全图、流程、用例与 Bug；抽屉/弹层需核对键盘焦点、错误和返回路径。主题改动核对已有主题预设与旧 JSON，不只检查默认色值。
+- 提交工作台样式前运行 `node scripts/check-workbench-design.mjs`；该检查限制新工作台样式文件内的颜色、圆角和未声明变量，不扫描消费者或历史样式。
+
+## 原有消费者主题参考
+
+以下保留既有消费者主题与参考索引，不作为原型审阅台界面的布局和组件规则。
+
 ## Overview
 
 Apple's web presence is a masterclass in **reverent product photography framed by near-invisible UI**. Every page is a stack of edge-to-edge product "tiles" — alternating light and dark canvases, each centered on a hero headline, a one-line tagline, two tiny blue pill CTAs, and an impossibly crisp product render. Nothing competes with the product. Typography is confident but quiet; color is either pure white, an off-white parchment, or a near-black tile; interactive elements are a single, quiet blue.
@@ -142,13 +163,6 @@ Apple's whitespace is the product's pedestal. Every tile begins with at least 64
 | `{rounded.lg}` | 18px | Store utility cards, accessories grid cards |
 | `{rounded.pill}` | 9999px | Primary blue pill CTAs, sub-nav buy button, configurator option chips, search input — the signature Apple pill |
 | `{rounded.full}` | 9999px / 50% | Circular control chips floating over photography |
-
-### Bug 工作台的递进式圆角
-
-- Bug 工作台按《999 个小技巧，让你 Vibe 的产品更有质感》第 004 条采用局部圆角规则，覆盖主页面、详情抽屉和图片预览，不改变其他内核工具或消费者页面的全局 token。
-- 外层卡片与抽屉使用 24px，内边距 16px 后的面板与直接表单控件使用 8px；更深层控件按 `max(4px, 外圆角 − 内边距)` 计算，最小为 4px。多选浮层独立使用 12px，内边距 8px 后的选项使用 4px。
-- 同层保持相同圆角，配套 padding、gap 与 radius 使用 4px 网格。胶囊、状态标签和圆形控件继续全圆，不套用逐层递减规则。
-- 支持的浏览器以 `corner-shape: superellipse(1.25)` 渐进增强非全圆表面；胶囊和圆形维持 `round`，不支持的浏览器保留相同 `border-radius`。
 
 ### Photography Geometry
 - **Hero imagery**: full-bleed, 21:9 or taller on the homepage; 16:9 on environment and shop pages. Product renders are photographic-realistic, often shot on a tinted surface that becomes the tile background.

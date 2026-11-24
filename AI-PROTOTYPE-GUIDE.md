@@ -133,6 +133,12 @@ void mountPrototypeApp({
 - 默认无 `runtimeConfig` 时认证关闭、协作使用本地模式。
 - 开发与预览服务监听 `0.0.0.0`。
 
+### 4.3 桌面工作台入口
+
+- 交互模式：标题下方直接看当前页面或状态的「页面结构」「核心功能」；「查看全部」可筛选和复制完整描述。`N` 收放页面导航，`C` 收放协作栏；收起两栏后描述仍可见。「协作 → 页面描述」保留来源切换与编辑入口。
+- 底栏：`D` 打开数据源，`K` 打开快捷键，两个面板均向上展开。演示模式和移动纯交互不显示这些桌面控件。
+- 顶部可进入测试用例、Bug 和主题切换；流程模式的画布工具栏提供「编辑流程」。操作手册位于顶部主题切换旁的书本按钮（`#/prototype-core-help`），主题实现准则位于主题面板内的书本按钮（`#/prototype-core-theme`）。
+
 ## 5. 产品定义与 ID 契约
 
 产品定义集中维护页面、状态、双语文案和流程：
@@ -189,7 +195,7 @@ export const product: PrototypeProductDefinition = {
 
 ### 5.1 顶部产品文档配置
 
-顶部左侧的标题和描述用于说明当前产品文档，右侧“产品需求文档”按钮读取同一份 `document` 配置。配置属于消费者产品定义，不应写入内核源码或 `runtimeConfig`。文档地址集中放在消费者 `.env` 中：
+顶部左侧显示 `document.title`，点击返回原型；`document.description` 用于标题按钮的提示，不是页面描述。文档入口为「工具 → 产品需求文档」，读取同一份 `document` 配置。「更新历史」和「健康检查」也在「工具」中。配置属于消费者产品定义，不应写入内核源码或 `runtimeConfig`。文档地址集中放在消费者 `.env` 中：
 
 ```dotenv
 VITE_PRODUCT_DOCUMENT_URL=https://example.com/product-requirements
@@ -391,7 +397,7 @@ const emit = defineEmits<{ search: [] }>()
   justify-content: center;
   min-width: 44px;
   min-height: 44px;
-  color: var(--ds-color-primary);
+  color: rgb(var(--ds-color-primary));
   background: transparent;
   border: 0;
   border-radius: var(--ds-rounded-sm);
@@ -581,6 +587,8 @@ const { go, goTab, setPrototypeState } = usePrototypeContext()
 
 ### 7.3 页面描述与注释
 
+页面描述与注释仍按当前页面或状态的 scope 读取。旧注释的 `x`、`y` 是相对于画布注释层的百分比，不因工作台布局调整而迁移；验收时以落点是否仍对准同一处业务内容为准，不比较浏览器中的绝对像素。
+
 写入路径由消费者 `projectId/codeBranch` 和当前 scope 决定：
 
 ```text
@@ -627,10 +635,12 @@ await window.__PROTOTYPE_CORE__.syncPageDescriptionsFromJson({ scopeIds: ['<scop
 
 ### 7.6 Bug 与附件
 
-- Bug 真值位于 `bugs/bugs.json`，以远端当前数组为基础执行变换后写回。
+- 历史 Bug 原地归入 V1，真值仍在 `bugs/bugs.json`（`main` 保留旧目录读取规则）。新提报版本通过工作台显式创建，清单位于 `bugs/versions.json`，首次提报后正文位于 `bugs/versions/<versionId>.json`。清单和单版本正文均以目标文件的远端当前数组为基础，通过 SHA 保护写入和精确回读。
+- 先核对左上角「提报版本」再提交或导出；它与工单字段「发生侧版本」独立。版本、草稿和选择按协作上下文隔离，草稿另外按提报版本隔离。Excel 只导出当前版本的 Gitee 真值，不受筛选和分页影响。
 - 图片先上传 OSS，Bug 数据只保存 URL、objectKey 和元数据。
 - Gitee/OSS 不可用时必须明确当前是否只保存在本地；不得把本地缓存称为团队已同步。
 - 删除 Bug、替换附件或清理 OSS 对象前说明不可逆影响。
+- 桌面布局为左侧提报、右侧列表；窄屏可按需展开提报。带图工单可在列表中直接点缩略图看大图。
 
 ### 7.7 初始化与迁移
 
@@ -811,7 +821,7 @@ const runtimeConfig: PrototypeRuntimeConfig = {
 ```
 
 - 本地种子：随消费者构建发布，供新浏览器和离线场景兜底。
-- localStorage：按域名和协作上下文隔离；页面描述、注释与测试用例按 scope 保存独立 revision，流程与 Bug 按整文件保存。缓存状态区分 `synced/pending/stale/error`。
+- localStorage：按域名和协作上下文隔离；页面描述、注释与测试用例按 scope 保存独立 revision，流程按整文件保存，Bug 版本清单和各版本正文各自按整文件保存。缓存状态区分 `synced/pending/stale/error`。
 - Gitee：远端协作启用后的团队真值。
 - JSON 是初始化种子和 AI 编辑载体，不是启用 Gitee 后的第二真值；AI 修改页面描述 JSON 后必须执行同步指令并以远端回读为完成依据。
 - 测试服与正式服显示不一致时，依次比较构建版本、静态种子、`runtimeConfig`、Gitee scope 和各域名缓存。

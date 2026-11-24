@@ -1,4 +1,5 @@
 import '../style.css'
+import '../workbench/workbench.css'
 import { configurePrototypeProduct, configurePrototypeRuntime } from './productAdapter'
 
 export { configurePrototypeProduct, configurePrototypeRuntime } from './productAdapter'

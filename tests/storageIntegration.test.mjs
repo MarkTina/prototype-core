@@ -253,6 +253,100 @@ test('JSON 已提交正文时开始编辑，保留人工原始基线以阻止随
 })
 
 const bug = { id: 'BUG-001', title: '原始问题', type: '功能异常', ownerRole: '前端开发', status: '待处理', description: '问题描述', reporterName: '测试者', createdAt: '2026-01-01', updatedAt: '2026-01-01' }
+const bugCatalogPath = `${base}/bugs/versions.json`
+const versionFixture = { id: '12345678123456781234567812345678', name: '2.1' }
+const versionFixturePath = `${base}/bugs/versions/${versionFixture.id}.json`
+
+test('Bug V1 保留 main 旧路径；新增版本独立编号、统计和导出', async (t) => {
+  const h = await storageHarness(t)
+  const legacyPath = 'projects/example/bugs/bugs.json'
+  h.files.set(legacyPath, { value: [bug], sha: 'legacy' })
+  await h.bugs.initializeBugs()
+  assert.equal(h.bugs.activeBugVersion.value.name, 'V1')
+  assert.equal(h.bugs.unresolvedBugCount.value, 1)
+  assert.deepEqual((await h.bugs.loadLatestBugsForExport()).map((item) => item.title), [bug.title])
+
+  await h.bugs.createBugVersion(' 2.1 ', '测试者')
+  const version = h.bugs.activeBugVersion.value
+  const path = `${base}/bugs/versions/${version.id}.json`
+  assert.equal(version.name, '2.1')
+  assert.deepEqual(h.files.get(bugCatalogPath).value, [version])
+  assert.equal(h.store.readCollaborationCache('bug-versions').revision, h.files.get(bugCatalogPath).sha)
+  assert.equal(h.files.has(path), false)
+  assert.equal(h.bugs.unresolvedBugCount.value, 0)
+  assert.deepEqual(await h.bugs.loadLatestBugsForExport(), [])
+  assert.equal(await h.bugs.persistBugs('测试者', '新增', (items) => [{ ...bug, id: h.bugs.nextBugId(items), title: '新版问题' }, ...items]), true)
+  assert.equal(h.files.get(path).value[0].id, 'BUG-001')
+  assert.equal(h.bugs.unresolvedBugCount.value, 1)
+  assert.deepEqual((await h.bugs.loadLatestBugsForExport()).map((item) => item.title), ['新版问题'])
+  await h.bugs.selectBugVersion('v1')
+  assert.deepEqual(h.bugs.bugs.value.map((item) => item.title), [bug.title])
+  assert.deepEqual(h.files.get(legacyPath), { value: [bug], sha: 'legacy' })
+  assert.equal(h.files.has(`${base}/bugs/bugs.json`), false)
+})
+
+test('Bug 版本选择按协作上下文恢复，清单失败不清除选择，确认缺失才回 V1', async (t) => {
+  const h = await storageHarness(t)
+  const key = h.store.collaborationContextStorageKey('bug-active-version')
+  h.storage.setItem(key, versionFixture.id)
+  h.files.set(bugCatalogPath, { value: [versionFixture], sha: 'versions' })
+  h.files.set(versionFixturePath, { value: [{ ...bug, title: '新版问题' }], sha: 'version-bugs' })
+  h.controls.failReadPath = bugCatalogPath
+  await h.bugs.initializeBugs()
+  assert.equal(h.bugs.bugSyncStatus.value, 'error')
+  assert.equal(h.storage.getItem(key), versionFixture.id)
+  h.controls.failReadPath = ''
+  await h.bugs.refreshBugs()
+  assert.equal(h.bugs.activeBugVersion.value.id, versionFixture.id)
+  assert.equal(h.bugs.bugs.value[0].title, '新版问题')
+  h.controls.failReadPath = bugCatalogPath
+  await h.bugs.refreshBugs()
+  assert.equal(h.bugs.activeBugVersion.value.id, versionFixture.id)
+  assert.equal(h.storage.getItem(key), versionFixture.id)
+  h.controls.failReadPath = ''
+  h.files.delete(bugCatalogPath)
+  await h.bugs.refreshBugs()
+  assert.equal(h.bugs.activeBugVersion.value.name, 'V1')
+  assert.equal(h.storage.getItem(key), 'v1')
+  h.adapter.configurePrototypeRuntime({ collaboration: { ...context, codeBranch: 'different' } })
+  assert.equal(h.storage.getItem(h.store.collaborationContextStorageKey('bug-active-version')), null)
+})
+
+test('Bug 版本切换不接受迟到的旧版本读取，导出失败时不使用缓存', async (t) => {
+  const h = await storageHarness(t)
+  h.files.set(bugCatalogPath, { value: [versionFixture], sha: 'versions' })
+  const v1 = `${base}/bugs/bugs.json`
+  h.files.set(v1, { value: [bug], sha: 'v1-bugs' })
+  h.files.set(versionFixturePath, { value: [{ ...bug, title: '新版问题' }], sha: 'version-bugs' })
+  await h.bugs.initializeBugs()
+  const gate = h.hold(v1)
+  const slow = h.bugs.refreshBugs()
+  await gate.ready
+  await h.bugs.selectBugVersion(versionFixture.id)
+  gate.release()
+  await slow
+  assert.deepEqual(h.bugs.bugs.value.map((item) => item.title), ['新版问题'])
+  h.controls.failReadPath = versionFixturePath
+  await assert.rejects(h.bugs.loadLatestBugsForExport(), /读取 Gitee 文件失败/)
+})
+
+test('Bug 版本重名不写入，并发创建保留远端真值，回读异常不切换', async (t) => {
+  const h = await storageHarness(t)
+  await h.bugs.initializeBugs()
+  await assert.rejects(h.bugs.createBugVersion(' v1 ', '测试者'), /名称已存在/)
+  const gate = h.hold(bugCatalogPath)
+  const creating = h.bugs.createBugVersion('并发目标', '测试者')
+  await gate.ready
+  h.files.set(bugCatalogPath, { value: [versionFixture], sha: 'concurrent' })
+  gate.release()
+  await assert.rejects(creating, /远端已有新的 Bug 数据/)
+  assert.equal(h.bugs.activeBugVersion.value.name, 'V1')
+  assert.equal(h.files.get(bugCatalogPath).sha, 'concurrent')
+  h.controls.corruptPath = bugCatalogPath
+  await assert.rejects(h.bugs.createBugVersion('回读异常', '测试者'), /精确回读不一致/)
+  assert.equal(h.bugs.activeBugVersion.value.name, 'V1')
+  assert.equal(h.bugs.bugSyncStatus.value, 'error')
+})
 
 test('Bug 旧刷新请求不得覆盖保存成功后的远端与缓存', async (t) => {
   const h = await storageHarness(t)

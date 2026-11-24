@@ -1,14 +1,13 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { AlertTriangle, Bug, CheckCircle2, ChevronLeft, ChevronRight, CircleDot, FileSpreadsheet, Filter, ImagePlus, Minus, Plus, RefreshCw, RotateCcw, Search, Trash2, X } from '@lucide/vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { AlertTriangle, Bug, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CircleDot, FileSpreadsheet, Filter, ImageOff, ImagePlus, Minus, Plus, RefreshCw, RotateCcw, Search, Tag, Trash2, X } from '@lucide/vue'
 import { useProductBugs } from './useProductBugs'
 import BugMultiSelect from './BugMultiSelect.vue'
 import { getPrototypeRuntime } from '../../core/productAdapter'
-import { getCollaborationContext } from '../../prototype/collaborationStore'
-import { collaborationCacheKey } from '../../prototype/collaborationPolicy'
+import { collaborationContextStorageKey } from '../../prototype/collaborationStore'
 import { currentUserName, readDefaultUserName, rememberFixerName, defaultFixerName } from '../../prototype/personNameMemory'
 import { ossPreviewUrl, ossUploadEnabled, uploadImageToOss } from './ossClient'
-import { bugIdExists, normalizeBugId } from './bugPolicy'
+import { bugIdExists, bugSubmissionDraftKind, formatReportedBugId, maxBugVersionNameLength, normalizeBugId } from './bugPolicy'
 import { exportBugsExcel } from './exportBugs'
 import { normalizeBugOwnerRoles } from './bugModel'
 import type { BugOwnerRole, BugSeverity, BugSourceSide, BugStatus, BugType, ProductBug, ProductBugAttachment } from './types'
@@ -25,9 +24,14 @@ const {
   bugOwnerRoles,
   bugStatuses,
   bugRemoteReady,
+  bugMutating,
+  bugVersions,
+  activeBugVersion,
   bugSyncStatus,
   bugSyncMessage,
   refreshBugs,
+  selectBugVersion,
+  createBugVersion,
   persistBugs,
   loadLatestBugsForExport,
   nextBugId: generateNextBugId,
@@ -42,13 +46,6 @@ const statusTone: Record<BugStatus, string> = {
   已验证: 'success',
   暂不处理: 'muted',
   无需处理: 'muted',
-}
-const severityTone: Record<BugSeverity, string> = {
-  P0: 'p0',
-  P1: 'p1',
-  P2: 'p2',
-  P3: 'p3',
-  P4: 'p4',
 }
 const severityWeight: Record<BugSeverity, number> = {
   P0: 0,
@@ -104,7 +101,7 @@ interface StoredBugSubmissionDraft {
   updatedAt: string
 }
 
-const submitForm = reactive<BugSubmissionForm>({
+const emptySubmissionForm = (): BugSubmissionForm => ({
   reporterName: readDefaultUserName(),
   title: '',
   type: '功能异常' as BugType,
@@ -114,6 +111,7 @@ const submitForm = reactive<BugSubmissionForm>({
   ownerRoles: ['后端开发'] as BugOwnerRole[],
   description: '',
 })
+const submitForm = reactive(emptySubmissionForm())
 const submissionId = ref(createSubmissionId())
 const uploadedSubmitAttachments = ref<ProductBugAttachment[]>([])
 const submitError = ref('')
@@ -168,6 +166,8 @@ const statusImageInputRef = ref<HTMLInputElement | null>(null)
 const statusPendingImages = ref<PendingBugImage[]>([])
 const statusImageNotice = ref('')
 const statusSubmitting = ref(false)
+const savingForm = ref(false)
+const preparingImages = ref(0)
 const exportingBugs = ref(false)
 const exportNotice = ref('')
 const exportNoticeTone = ref<'success' | 'error'>('success')
@@ -177,7 +177,67 @@ const previewIndex = ref(0)
 const previewZoom = ref(1)
 const previewOffset = reactive({ x: 0, y: 0 })
 const previewDrag = ref<{ pointerId: number; x: number; y: number } | null>(null)
+const previewCloseButton = ref<HTMLButtonElement | null>(null)
+let previewTrigger: HTMLElement | null = null
+const listPreviewLimit = 2
 const ossReady = ossUploadEnabled()
+const versionFormOpen = ref(false)
+const reportFormOpen = ref(false)
+const versionName = ref('')
+const versionMessage = ref('')
+const versionNameInput = ref<HTMLInputElement | null>(null)
+const versionBusy = computed(() => bugMutating.value || savingForm.value || statusSubmitting.value || preparingImages.value > 0 || exportingBugs.value)
+
+function versionSwitchMessage() {
+  if (pendingImages.value.some((image) => image.status !== 'uploaded') || statusPendingImages.value.length) return '请先提交或移除待处理的截图，再切换版本。'
+  if (isEditingBug.value || isConfirmingDelete.value || statusForm.note.trim() && selectedBugLocator.value) return '请先保存或关闭正在处理的 Bug，再切换版本。'
+  return ''
+}
+
+async function handleVersionChange(event: Event) {
+  const select = event.target as HTMLSelectElement
+  const next = select.value
+  versionMessage.value = versionSwitchMessage()
+  if (versionBusy.value || versionMessage.value) {
+    select.value = activeBugVersion.value.id
+    return
+  }
+  await selectBugVersion(next)
+}
+
+async function openVersionForm() {
+  versionMessage.value = versionSwitchMessage()
+  if (versionBusy.value || versionMessage.value) return
+  versionFormOpen.value = true
+  await nextTick()
+  versionNameInput.value?.focus()
+}
+
+function closeVersionForm() {
+  versionFormOpen.value = false
+  versionName.value = ''
+  versionMessage.value = ''
+}
+
+async function saveVersion() {
+  versionMessage.value = versionSwitchMessage()
+  if (versionBusy.value || versionMessage.value) return
+  try {
+    await createBugVersion(versionName.value, readDefaultUserName() || 'Bug 工作台')
+    closeVersionForm()
+  } catch (error) {
+    versionMessage.value = error instanceof Error ? error.message : 'Bug 版本保存失败，请重试'
+  }
+}
+
+async function handleRefreshBugs() {
+  versionMessage.value = versionSwitchMessage()
+  if (!versionBusy.value && !versionMessage.value) await refreshBugs()
+}
+
+function displayedBugId(id: string) {
+  return formatReportedBugId(activeBugVersion.value, id)
+}
 
 function handleImagePreviewKeydown(event: KeyboardEvent) {
   if (!activeImagePreview.value) return
@@ -194,16 +254,27 @@ function handleImagePreviewKeydown(event: KeyboardEvent) {
 }
 
 function openImagePreview(attachments: ProductBugAttachment[], index: number) {
+  const attachment = attachments[index]
+  if (!attachment) return
+  previewTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null
   previewAttachments.value = attachments
   previewIndex.value = index
-  activeImagePreview.value = attachments[index] ?? null
+  activeImagePreview.value = attachment
   resetPreviewZoom()
+  void nextTick(() => previewCloseButton.value?.focus({ preventScroll: true }))
 }
 
 function closeImagePreview() {
   activeImagePreview.value = null
   previewAttachments.value = []
   previewDrag.value = null
+  const trigger = previewTrigger
+  previewTrigger = null
+  if (trigger) void nextTick(() => trigger.focus({ preventScroll: true }))
+}
+
+function showListPreviewFallback(event: Event) {
+  if (event.currentTarget instanceof HTMLImageElement) event.currentTarget.hidden = true
 }
 
 function resetPreviewZoom() {
@@ -252,22 +323,12 @@ function stopPreviewDrag() {
   previewDrag.value = null
 }
 
-function scrollImageStrip(event: MouseEvent, direction: number) {
-  const strip = (event.currentTarget as HTMLElement).parentElement?.querySelector<HTMLElement>('.bug-list-images-strip')
-  if (!strip) return
-  strip.scrollBy({ left: direction * strip.clientWidth, behavior: 'smooth' })
-}
-
 function createSubmissionId(): string {
   return crypto.randomUUID?.() ?? `submission-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
-function submissionDraftStorageKey() {
-  const context = getCollaborationContext()
-  return collaborationCacheKey(
-    [context.provider || 'local', context.owner || 'none', context.repo || 'none', context.remoteBranch, context.projectId, context.branchKey],
-    'bug-submit-draft',
-  )
+function submissionDraftStorageKey(versionId = activeBugVersion.value.id) {
+  return collaborationContextStorageKey(bugSubmissionDraftKind(versionId))
 }
 
 function validStoredAttachment(value: unknown): value is ProductBugAttachment {
@@ -321,10 +382,10 @@ function hasSubmissionDraftContent() {
   )
 }
 
-function saveSubmissionDraft() {
+function saveSubmissionDraft(versionId = activeBugVersion.value.id) {
   try {
     if (!hasSubmissionDraftContent()) {
-      window.localStorage.removeItem(submissionDraftStorageKey())
+      window.localStorage.removeItem(submissionDraftStorageKey(versionId))
       return
     }
     const draft: StoredBugSubmissionDraft = {
@@ -334,7 +395,7 @@ function saveSubmissionDraft() {
       attachments: uploadedSubmitAttachments.value,
       updatedAt: new Date().toISOString(),
     }
-    window.localStorage.setItem(submissionDraftStorageKey(), JSON.stringify(draft))
+    window.localStorage.setItem(submissionDraftStorageKey(versionId), JSON.stringify(draft))
   } catch {
     // 草稿缓存失败不阻断用户继续提交。
   }
@@ -350,8 +411,10 @@ function clearSubmissionDraft() {
   submissionId.value = createSubmissionId()
 }
 
-const restoredSubmissionDraft = readSubmissionDraft()
-if (restoredSubmissionDraft) {
+function restoreSubmissionDraft() {
+  const restoredSubmissionDraft = readSubmissionDraft()
+  reporterNameEdited = Boolean(restoredSubmissionDraft?.form.reporterName.trim())
+  if (!restoredSubmissionDraft) return
   Object.assign(submitForm, restoredSubmissionDraft.form)
   submitForm.reporterName = restoredSubmissionDraft.form.reporterName.trim() || readDefaultUserName()
   submissionId.value = restoredSubmissionDraft.submissionId
@@ -370,10 +433,24 @@ if (restoredSubmissionDraft) {
   if (restoredSubmissionDraft.attachments.length) imageNotice.value = `已恢复 ${restoredSubmissionDraft.attachments.length} 张待提交图片`
 }
 
-watch(submitForm, saveSubmissionDraft, { deep: true })
-watch(uploadedSubmitAttachments, saveSubmissionDraft, { deep: true })
+let reporterNameEdited = false
+restoreSubmissionDraft()
+watch(submitForm, () => saveSubmissionDraft(), { deep: true })
+watch(uploadedSubmitAttachments, () => saveSubmissionDraft(), { deep: true })
+watch(() => activeBugVersion.value.id, (_next, previous) => {
+  saveSubmissionDraft(previous)
+  closeDetail()
+  closeImagePreview()
+  Object.assign(submitForm, emptySubmissionForm())
+  submissionId.value = createSubmissionId()
+  uploadedSubmitAttachments.value = []
+  submitError.value = ''
+  exportNotice.value = ''
+  filters.sourceSideVersion = []
+  currentPage.value = 1
+  restoreSubmissionDraft()
+}, { flush: 'sync' })
 
-let reporterNameEdited = Boolean(restoredSubmissionDraft?.form.reporterName.trim())
 let operatorNameEdited = false
 
 function rememberUserInput(field: 'reporter' | 'operator', value: string) {
@@ -450,7 +527,7 @@ const filteredBugs = computed(() => {
     if (filters.ownerRole.length && !filters.ownerRole.some((role) => bug.ownerRoles.includes(role))) return false
     if (filters.status.length && !filters.status.includes(bug.status)) return false
     if (!keyword) return true
-    return [bug.id, bug.title, bug.description, bug.reporterName, bug.fixerName, bug.type, bug.severity, bug.sourceSide, bug.sourceSideVersion, ownerRolesLabel(bug.ownerRoles), bug.status]
+    return [displayedBugId(bug.id), bug.title, bug.description, bug.reporterName, bug.fixerName, bug.type, bug.severity, bug.sourceSide, bug.sourceSideVersion, ownerRolesLabel(bug.ownerRoles), bug.status]
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(keyword))
   })
@@ -527,6 +604,16 @@ async function prepareImageFile(file: File): Promise<PendingBugImage> {
 }
 
 async function addImageFiles(files: File[], forStatus = false) {
+  if (savingForm.value || bugMutating.value || bugSyncStatus.value === 'loading') return
+  preparingImages.value += 1
+  try {
+    await prepareSelectedImages(files, forStatus)
+  } finally {
+    preparingImages.value -= 1
+  }
+}
+
+async function prepareSelectedImages(files: File[], forStatus: boolean) {
   if (forStatus && (statusSubmitting.value || isEditingBug.value || isConfirmingDelete.value || bugSyncStatus.value === 'loading')) return
   const images = forStatus ? statusPendingImages : pendingImages
   const notice = forStatus ? statusImageNotice : imageNotice
@@ -640,6 +727,16 @@ function clearStatusImages() {
 }
 
 async function submitBug() {
+  if (versionBusy.value || bugSyncStatus.value === 'loading') return
+  savingForm.value = true
+  try {
+    await saveSubmission()
+  } finally {
+    savingForm.value = false
+  }
+}
+
+async function saveSubmission() {
   submitError.value = ''
   imageNotice.value = ''
   const reporterName = submitForm.reporterName.trim()
@@ -826,6 +923,16 @@ async function deleteBug() {
 }
 
 async function saveBugEdit() {
+  if (versionBusy.value || bugSyncStatus.value === 'loading') return
+  savingForm.value = true
+  try {
+    await persistBugEdit()
+  } finally {
+    savingForm.value = false
+  }
+}
+
+async function persistBugEdit() {
   const bug = selectedBug.value
   const locator = selectedBugLocator.value
   if (!bug || !locator || !canStartBugEdit.value) return
@@ -883,7 +990,7 @@ async function saveBugEdit() {
 }
 
 async function updateBugStatus() {
-  if (statusSubmitting.value || isEditingBug.value || isConfirmingDelete.value || bugSyncStatus.value === 'loading') return
+  if (versionBusy.value || isEditingBug.value || isConfirmingDelete.value || bugSyncStatus.value === 'loading') return
   statusError.value = ''
   const bug = selectedBug.value
   const locator = selectedBugLocator.value
@@ -945,11 +1052,13 @@ async function updateBugStatus() {
 }
 
 async function handleExportBugs() {
+  if (versionBusy.value) return
+  const version = activeBugVersion.value
   exportingBugs.value = true
   exportNotice.value = ''
   try {
     const latestBugs = await loadLatestBugsForExport()
-    const result = await exportBugsExcel(latestBugs)
+    const result = await exportBugsExcel(latestBugs.map((bug) => ({ ...bug, id: formatReportedBugId(version, bug.id) })))
     exportNoticeTone.value = 'success'
     exportNotice.value = `已导出 ${result.bugCount} 条 Bug、${result.attachmentCount} 个附件${result.thumbnailFailureCount ? `，${result.thumbnailFailureCount} 张缩略图读取失败，已保留原图链接` : ''}`
   } catch (error) {
@@ -965,24 +1074,46 @@ async function handleExportBugs() {
   <main class="bug-page">
     <header class="bug-page-head">
       <div>
+        <p class="pc-eyebrow">QUALITY REGISTER / BUG</p>
         <button class="bug-back-btn" type="button" @click="emit('close')">返回原型</button>
         <h1>Bug 管理</h1>
-        <p>面向测试和协作同事的产品 Bug 提报、筛选与状态流转。</p>
+        <div class="bug-version-controls">
+          <label class="bug-version-picker" for="bug-report-version" :title="activeBugVersion.name">
+            <Tag :size="16" aria-hidden="true" />
+            <span class="bug-version-label">提报版本</span>
+            <strong class="bug-version-value" aria-hidden="true">{{ activeBugVersion.name }}</strong>
+            <ChevronDown :size="16" aria-hidden="true" />
+            <select id="bug-report-version" :value="activeBugVersion.id" :disabled="versionBusy || versionFormOpen" @change="handleVersionChange">
+              <option v-for="version in bugVersions" :key="version.id" :value="version.id">{{ version.name }}</option>
+            </select>
+          </label>
+          <button type="button" class="bug-version-button" :disabled="versionBusy || versionFormOpen || bugSyncStatus === 'loading'" @click="openVersionForm">
+            <Plus :size="16" aria-hidden="true" /> 新建版本
+          </button>
+        </div>
+        <form v-if="versionFormOpen" class="bug-version-controls bug-version-form" @submit.prevent="saveVersion" @keydown.esc.prevent="!versionBusy && closeVersionForm()">
+          <label class="sr-only" for="bug-version-name">版本名称</label>
+          <input id="bug-version-name" ref="versionNameInput" v-model="versionName" type="text" placeholder="例如 2.1" :maxlength="maxBugVersionNameLength" :disabled="versionBusy" required />
+          <button type="submit" class="bug-primary-btn bug-version-create" :disabled="versionBusy">{{ bugMutating ? '保存中' : '创建' }}</button>
+          <button type="button" class="bug-version-button" :disabled="versionBusy" @click="closeVersionForm">取消</button>
+        </form>
+        <p v-if="versionMessage" class="bug-version-message" role="alert">{{ versionMessage }}</p>
       </div>
       <div class="bug-head-actions">
-        <button class="bug-refresh-btn" type="button" :disabled="bugSyncStatus === 'loading' || exportingBugs" @click="refreshBugs">
+        <button class="pc-tool-button pc-primary bug-report-toggle" type="button" :aria-expanded="reportFormOpen" aria-controls="workbench-bug-report" @click="reportFormOpen = !reportFormOpen"><Plus class="h-4 w-4" aria-hidden="true" />{{ reportFormOpen ? '收起提报' : '提报 Bug' }}</button>
+        <button class="bug-refresh-btn" type="button" :disabled="bugSyncStatus === 'loading' || versionBusy" @click="handleRefreshBugs">
           <span class="bug-refresh-main">
             <RefreshCw class="h-4 w-4" />
             <span>刷新</span>
           </span>
-          <span class="bug-refresh-status" :class="`is-${bugSyncStatus}`">{{ bugSyncMessage || 'Bug 数据已就绪' }}</span>
+          <span class="bug-refresh-status" :class="`is-${bugSyncStatus}`" :title="bugSyncMessage">{{ bugSyncMessage || 'Bug 数据已就绪' }}</span>
         </button>
-        <button class="bug-export-btn" type="button" :disabled="!bugRemoteReady || bugSyncStatus === 'loading' || exportingBugs" @click="handleExportBugs">
+        <button class="bug-export-btn" type="button" :disabled="!bugRemoteReady || bugSyncStatus === 'loading' || versionBusy" @click="handleExportBugs">
           <span class="bug-refresh-main">
             <FileSpreadsheet class="h-4 w-4" />
             <span>{{ exportingBugs ? '导出中' : '导出 Excel' }}</span>
           </span>
-          <span class="bug-export-status" :class="`is-${exportNoticeTone}`">{{ exportNotice || (bugRemoteReady ? '读取 Gitee 最新数据' : '未启用 Gitee') }}</span>
+          <span class="bug-export-status" :class="`is-${exportNoticeTone}`" :title="exportNotice">{{ exportNotice || (bugRemoteReady ? '仅导出当前版本' : '未启用 Gitee') }}</span>
         </button>
       </div>
     </header>
@@ -1025,14 +1156,14 @@ async function handleExportBugs() {
       </article>
     </section>
 
-    <section class="bug-workspace">
-      <form class="bug-submit-panel" @submit.prevent="submitBug" @paste="handlePaste">
+    <section class="bug-workspace" :class="{ 'pc-report-open': reportFormOpen }">
+      <form id="workbench-bug-report" class="bug-submit-panel" @submit.prevent="submitBug" @paste="handlePaste">
         <datalist id="bug-source-side-version-options">
           <option v-for="version in sourceSideVersionSuggestions" :key="version" :value="version" />
         </datalist>
         <div class="bug-section-title">
           <Plus class="h-4 w-4" />
-          <span>提报 Bug</span>
+          <span>提报 Bug · {{ activeBugVersion.name }}</span>
         </div>
         <label>
           <span>提报人姓名</span>
@@ -1113,14 +1244,14 @@ async function handleExportBugs() {
           <p v-if="imageNotice" class="bug-form-error">{{ imageNotice }}</p>
         </section>
         <p v-if="submitError" class="bug-form-error">{{ submitError }}</p>
-        <button class="bug-primary-btn" type="submit" :disabled="bugSyncStatus === 'loading'">提交 Bug</button>
+        <button class="bug-primary-btn" type="submit" :disabled="bugSyncStatus === 'loading' || versionBusy">提交 Bug</button>
       </form>
 
       <section class="bug-list-panel">
         <div class="bug-filter-bar">
           <div class="bug-section-title">
             <Filter class="h-4 w-4" />
-            <span>筛选</span>
+            <span>Bug 列表 · {{ activeBugVersion.name }}</span>
           </div>
           <div class="bug-filter-grid">
             <BugMultiSelect v-model="filters.status" label="状态" :options="bugStatuses" />
@@ -1159,35 +1290,33 @@ async function handleExportBugs() {
           </div>
         </div>
 
-        <div class="bug-list">
-          <p v-if="!filteredBugs.length" class="bug-empty">当前筛选条件下暂无 Bug。</p>
-          <article v-for="bug in paginatedBugs" :key="bugRowKey(bug)" class="bug-list-item" :class="`is-${statusTone[bug.status]}`">
-            <div class="bug-list-main">
-              <div class="bug-list-meta">
-                <b>#{{ bug.id }}</b>
-                <span>{{ bug.type }}</span>
-                <span :class="`severity-${severityTone[bug.severity]}`">{{ bug.severity }}</span>
-                <span>发生侧：{{ bug.sourceSide }}</span>
-                <span v-if="bug.sourceSideVersion">版本：{{ bug.sourceSideVersion }}</span>
-                <span>归属：{{ ownerRolesLabel(bug.ownerRoles) }}</span>
-                <i :class="`status-${statusTone[bug.status]}`">{{ bug.status }}</i>
-              </div>
-              <h2>{{ bug.title }}</h2>
-              <p>{{ bug.description }}</p>
-              <div v-if="bug.attachments?.length" class="bug-list-images">
-                <button v-if="bug.attachments.length > 1" class="bug-list-images-nav" type="button" aria-label="向左切换截图" @click="scrollImageStrip($event, -1)"><ChevronLeft class="h-4 w-4" /></button>
-                <div class="bug-list-images-strip">
-                  <button v-for="(attachment, index) in bug.attachments" :key="attachment.id" type="button" :aria-label="`查看截图 ${index + 1}：${attachment.name}`" @click="openImagePreview(bug.attachments, index)">
-                    <img :src="ossPreviewUrl(attachment.url)" :alt="attachment.name" loading="lazy" />
-                  </button>
-                </div>
-                <button v-if="bug.attachments.length > 1" class="bug-list-images-nav" type="button" aria-label="向右切换截图" @click="scrollImageStrip($event, 1)"><ChevronRight class="h-4 w-4" /></button>
-                <span>{{ bug.attachments.length }} 张</span>
-              </div>
-              <small>提报人：{{ bug.reporterName }} · {{ formatTime(bug.createdAt) }}<template v-if="bug.fixerName"> · 修复人：{{ bug.fixerName }}</template></small>
-            </div>
-            <button type="button" @click="openBug(bug)">查看/变更状态</button>
-          </article>
+        <div class="bug-list pc-record-scroll">
+          <p v-if="!filteredBugs.length" class="bug-empty" role="status">
+            {{ bugSyncStatus === 'loading' ? '正在读取当前版本…' : bugSyncStatus === 'error' || bugSyncStatus === 'conflict' ? (bugSyncMessage || '无法读取当前版本，请刷新重试。') : '当前筛选条件下暂无 Bug。' }}
+          </p>
+          <table v-else class="pc-record-table" aria-label="当前提报版本工单">
+            <thead><tr><th scope="col">编号</th><th scope="col">工单标题</th><th scope="col">状态</th><th scope="col">等级</th><th scope="col">归属 / 发生侧</th><th scope="col">提报信息</th></tr></thead>
+            <tbody>
+              <tr v-for="bug in paginatedBugs" :key="bugRowKey(bug)">
+                <td class="pc-record-id">{{ displayedBugId(bug.id) }}</td>
+                <td>
+                  <button type="button" class="pc-record-link" @click="openBug(bug)">{{ bug.title }}</button>
+                  <small>{{ bug.type }}<template v-if="bug.attachments?.length"> · {{ bug.attachments.length }} 张截图</template></small>
+                  <div v-if="bug.attachments?.length" class="bug-record-previews" role="group" :aria-label="`${bug.title}的截图`">
+                    <button v-for="(attachment, index) in bug.attachments.slice(0, listPreviewLimit)" :key="attachment.id" type="button" :aria-label="`查看截图 ${index + 1}：${attachment.name}`" :title="attachment.name" @click="openImagePreview(bug.attachments, index)">
+                      <img :key="attachment.url" :src="ossPreviewUrl(attachment.url)" alt="" loading="lazy" decoding="async" @error="showListPreviewFallback" />
+                      <span class="bug-record-image-fallback"><ImageOff class="h-4 w-4" aria-hidden="true" /><span>加载失败</span></span>
+                    </button>
+                    <button v-if="bug.attachments.length > listPreviewLimit" type="button" :aria-label="`查看其余 ${bug.attachments.length - listPreviewLimit} 张截图`" @click="openImagePreview(bug.attachments, listPreviewLimit)">+{{ bug.attachments.length - listPreviewLimit }}</button>
+                  </div>
+                </td>
+                <td><span class="pc-record-tag" :data-tone="statusTone[bug.status]">{{ bug.status }}</span></td>
+                <td>{{ bug.severity }}</td>
+                <td>{{ ownerRolesLabel(bug.ownerRoles) }}<small>{{ bug.sourceSide }}<template v-if="bug.sourceSideVersion"> · {{ bug.sourceSideVersion }}</template></small></td>
+                <td>{{ bug.reporterName }}<small>{{ formatTime(bug.createdAt) }}<template v-if="bug.fixerName"> · 修复人 {{ bug.fixerName }}</template></small></td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
         <div v-if="filteredBugs.length" class="bug-pagination">
@@ -1201,33 +1330,34 @@ async function handleExportBugs() {
       </section>
     </section>
 
-    <div v-if="selectedBug" class="bug-detail-backdrop">
-      <aside class="bug-detail-panel">
-        <div class="bug-detail-head">
-          <div>
-            <span>#{{ selectedBug.id }}</span>
+    <div v-if="selectedBug" class="bug-detail-backdrop pc-scrim">
+      <aside class="bug-detail-panel pc-dialog" role="dialog" aria-label="Bug 详情">
+        <header class="bug-detail-head">
+          <div class="bug-detail-topline">
+            <span class="pc-record-id">#{{ displayedBugId(selectedBug.id) }}</span>
+            <button class="pc-tool-button" type="button" aria-label="关闭详情" :disabled="statusSubmitting" @click="closeDetail">
+              <X class="h-4 w-4" aria-hidden="true" />关闭
+            </button>
+          </div>
+          <div class="bug-detail-title-row">
             <h2>{{ selectedBug.title }}</h2>
+            <span class="pc-record-tag" :data-tone="statusTone[selectedBug.status]">{{ selectedBug.status }}</span>
           </div>
-          <button type="button" aria-label="关闭详情" :disabled="statusSubmitting" @click="closeDetail"><X class="h-5 w-5" /></button>
-        </div>
-        <div class="bug-detail-summary">
-          <span>{{ selectedBug.type }}</span>
-          <span :class="`severity-${severityTone[selectedBug.severity]}`">{{ selectedBug.severity }}</span>
-          <span>发生侧：{{ selectedBug.sourceSide }}</span>
-          <span v-if="selectedBug.sourceSideVersion">版本：{{ selectedBug.sourceSideVersion }}</span>
-          <span>归属：{{ ownerRolesLabel(selectedBug.ownerRoles) }}</span>
-          <span :class="`status-${statusTone[selectedBug.status]}`">{{ selectedBug.status }}</span>
-        </div>
-        <div class="bug-detail-actions">
-          <div>
-            <button v-if="canStartBugEdit && !isEditingBug" class="bug-edit-entry-btn" type="button" :disabled="statusSubmitting" @click="startBugEdit">编辑 Bug</button>
+          <div class="bug-detail-summary">
+            <span>{{ selectedBug.type }}</span>
+            <span><span aria-hidden="true">· </span>{{ selectedBug.severity }}</span>
+            <span><span aria-hidden="true">· </span>发生侧：{{ selectedBug.sourceSide }}</span>
+            <span v-if="selectedBug.sourceSideVersion"><span aria-hidden="true">· </span>版本：{{ selectedBug.sourceSideVersion }}</span>
+            <span><span aria-hidden="true">· </span>归属：{{ ownerRolesLabel(selectedBug.ownerRoles) }}</span>
+          </div>
+          <div v-if="!isEditingBug || !canStartBugEdit" class="bug-detail-actions">
+            <button v-if="canStartBugEdit && !isEditingBug" class="pc-tool-button" type="button" :disabled="statusSubmitting" @click="startBugEdit">编辑 Bug</button>
             <span v-else-if="!canStartBugEdit">已完结 Bug 不支持编辑</span>
+            <button v-if="!isEditingBug" class="pc-tool-button bug-delete-entry-btn" type="button" :disabled="statusSubmitting" @click="startDeleteBug">
+              <Trash2 class="h-4 w-4" aria-hidden="true" />删除 Bug
+            </button>
           </div>
-          <button v-if="!isEditingBug" class="bug-delete-entry-btn" type="button" :disabled="statusSubmitting" @click="startDeleteBug">
-            <Trash2 class="h-4 w-4" />
-            删除 Bug
-          </button>
-        </div>
+        </header>
         <form v-if="isConfirmingDelete" class="bug-delete-form" @submit.prevent="deleteBug">
           <div>
             <b>删除确认</b>
@@ -1341,7 +1471,10 @@ async function handleExportBugs() {
             <button type="submit" :disabled="bugSyncStatus === 'loading'">保存修改</button>
           </div>
         </form>
-        <p v-else class="bug-detail-description">{{ selectedBug.description }}</p>
+        <section v-else class="bug-detail-description">
+          <h3>问题描述</h3>
+          <p>{{ selectedBug.description }}</p>
+        </section>
         <p class="bug-detail-meta">提报人：{{ selectedBug.reporterName }} · {{ formatTime(selectedBug.createdAt) }}</p>
         <section v-if="!isEditingBug && selectedBug.attachments?.length" class="bug-detail-images">
           <h3>问题截图</h3>
@@ -1431,7 +1564,7 @@ async function handleExportBugs() {
       </aside>
     </div>
     <div v-if="activeImagePreview" class="bug-image-preview-backdrop" @click.self="closeImagePreview">
-      <section class="bug-image-preview-dialog">
+      <section class="bug-image-preview-dialog" role="dialog" aria-label="截图预览">
         <div class="bug-image-preview-toolbar">
           <p>{{ activeImagePreview.name }}</p>
           <span>{{ previewIndex + 1 }} / {{ previewAttachments.length }}</span>
@@ -1440,7 +1573,7 @@ async function handleExportBugs() {
             <span>{{ Math.round(previewZoom * 100) }}%</span>
             <button type="button" aria-label="放大图片" title="放大图片" :disabled="previewZoom >= 4" @click="changePreviewZoom(1)"><Plus class="h-4 w-4" /></button>
             <button type="button" aria-label="重置缩放" title="重置缩放" @click="resetPreviewZoom"><RotateCcw class="h-4 w-4" /></button>
-            <button type="button" aria-label="关闭图片预览" title="关闭图片预览" @click="closeImagePreview"><X class="h-5 w-5" /></button>
+            <button ref="previewCloseButton" type="button" aria-label="关闭图片预览" title="关闭图片预览" @click="closeImagePreview"><X class="h-5 w-5" /></button>
           </div>
         </div>
         <div class="bug-image-preview-stage" @wheel.prevent="handlePreviewWheel" @pointerdown="startPreviewDrag" @pointermove="movePreviewDrag" @pointerup="stopPreviewDrag" @pointercancel="stopPreviewDrag" @lostpointercapture="stopPreviewDrag">

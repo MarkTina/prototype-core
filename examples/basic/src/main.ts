@@ -9,4 +9,14 @@ const runtimeConfig: PrototypeRuntimeConfig = {
   },
 }
 
-void mountPrototypeApp({ target: '#app', product, runtimeConfig })
+async function mountExample() {
+  const demo = new URLSearchParams(location.search).get('demo')
+  if (demo === 'bugs' || (import.meta.env.DEV && demo === null)) {
+    const { bugDemoProjectId, seedBugDemo } = await import('./bug-demo')
+    runtimeConfig.collaboration = { projectId: bugDemoProjectId }
+    seedBugDemo()
+  }
+  await mountPrototypeApp({ target: '#app', product, runtimeConfig })
+}
+
+void mountExample()
