@@ -198,7 +198,12 @@ const prototypeInitialized = ref(false)
 const showPrototypeHealthPanel = ref(false)
 const showEnvironmentCheckPanel = ref(false)
 const prototypeHealthTab = ref<'overview' | 'matrix'>('overview')
-const pageDescriptionSummaryVisible = ref(false)
+const pageDescriptionReaderOpen = ref(false)
+const pageDescriptionWide = ref(false)
+const pageDescriptionFilter = ref(false)
+const pageDescriptionReaderDialog = ref<HTMLDialogElement | null>(null)
+const pageDescriptionReaderBody = ref<HTMLElement | null>(null)
+const pageDescriptionReaderToggle = ref<HTMLButtonElement | null>(null)
 const pageDescriptionCopyNotice = ref('')
 const selectedPageDescriptionSectionIds = ref<string[]>([...defaultPageDescriptionSectionIds])
 const pageDescriptionEditing = ref(false)
@@ -534,6 +539,14 @@ const overviewPanY = ref(24)
 const isOverviewPanning = ref(false)
 let overviewPanStart = { x: 0, y: 0, panX: 0, panY: 0 }
 const effectiveMode = computed(() => (isMobilePureInteractive.value ? 'interactive' : mode.value))
+const pageDescriptionReaderRoom = computed(() =>
+  viewportWidth.value - (interactiveFlowNavCollapsed.value ? 0 : 288) - (currentScreenPlatform.value === 'pc' ? 720 : 420),
+)
+const pageDescriptionReaderModal = computed(() => viewportWidth.value <= 900 || pageDescriptionReaderRoom.value < 480)
+const pageDescriptionCanWiden = computed(() => pageDescriptionReaderRoom.value >= 640)
+const pageDescriptionReaderWide = computed(() => pageDescriptionWide.value && pageDescriptionCanWiden.value)
+const pageDescriptionReaderDocked = computed(() => pageDescriptionReaderOpen.value && !pageDescriptionReaderModal.value)
+const pageDescriptionReaderVisible = computed(() => pageDescriptionReaderOpen.value && effectiveMode.value === 'interactive' && !isMobilePureInteractive.value && !presentationMode.value)
 const renderedScreens = computed<DisplayScreen[]>(() =>
   isMobilePureInteractive.value ? [currentDisplayScreen.value] : visibleScreens.value,
 )
@@ -861,6 +874,18 @@ const pageDescriptionSummarySections = computed(() => [
 const selectedPageDescriptionSections = computed(() =>
   pageDescriptionSummarySections.value.filter((section) => selectedPageDescriptionSectionIds.value.includes(section.id)),
 )
+const pageDescriptionReaderSections = computed(() =>
+  pageDescriptionFilter.value ? selectedPageDescriptionSections.value : pageDescriptionSummarySections.value,
+)
+const pageDescriptionReaderStatus = computed(() => {
+  const source = pageDescriptionSourceOptions.find((option) => option.source === pageDescriptionSelectedSource.value)?.label
+  const sync = collaborationSources.value.pageDescriptions
+  const status = sync.status === 'error' || sync.status === 'conflict' ? sync.message || '远端同步失败'
+    : sync.status === 'syncing' ? '正在刷新远端'
+      : pageDescriptionSelectedSource.value === 'gitee' && sync.source === 'gitee' && sync.status === 'success' && selectedPageDescriptionSourceAvailable.value
+        ? '已同步' : selectedPageDescriptionSourceStatus.value
+  return `${source} · ${status}`
+})
 const pageDescriptionSummaryText = computed(() =>
   selectedPageDescriptionSections.value.map((section) => `${section.label}：${section.value}`).join('\n\n'),
 )
@@ -1010,6 +1035,50 @@ async function copyPageDescriptionSummary() {
     pageDescriptionCopyNotice.value = '复制失败，请手动复制'
   }
 }
+
+function closePageDescriptionReader(restoreFocus = true) {
+  pageDescriptionReaderOpen.value = false
+  activeCollaborationTab.value = 'annotations'
+  if (restoreFocus) void nextTick(() => pageDescriptionReaderToggle.value?.focus())
+}
+
+function togglePageDescriptionReader() {
+  if (effectiveMode.value !== 'interactive' || presentationMode.value) return
+  if (pageDescriptionReaderOpen.value) return closePageDescriptionReader()
+  pageDescriptionFilter.value = false
+  pageDescriptionCopyNotice.value = ''
+  activeCollaborationTab.value = 'pageDescription'
+  cancelAnnotationDraft()
+  pageDescriptionReaderOpen.value = true
+}
+
+function toggleAnnotationPanel() {
+  if (pageDescriptionReaderOpen.value) {
+    closePageDescriptionReader(false)
+    annotationPanelCollapsed.value = false
+  } else {
+    annotationPanelCollapsed.value = !annotationPanelCollapsed.value
+  }
+}
+
+async function togglePageDescriptionWidth() {
+  const body = pageDescriptionReaderBody.value
+  const anchor = body && [...body.querySelectorAll('section')].find((section) => section.getBoundingClientRect().bottom > body.getBoundingClientRect().top)
+  const anchorTop = anchor?.getBoundingClientRect().top
+  pageDescriptionWide.value = !pageDescriptionWide.value
+  await nextTick()
+  if (body && anchor && anchorTop !== undefined) body.scrollTop += anchor.getBoundingClientRect().top - anchorTop
+}
+
+watch([pageDescriptionReaderDialog, pageDescriptionReaderModal, pageDescriptionEditing], ([dialog, modal, editing]) => {
+  if (!modal || editing) dialog?.close()
+  else if (dialog?.isConnected && !dialog.open) dialog.showModal()
+}, { flush: 'post' })
+
+watch(currentPageDescriptionScopeId, () => {
+  if (pageDescriptionReaderBody.value) pageDescriptionReaderBody.value.scrollTop = 0
+  pageDescriptionCopyNotice.value = ''
+})
 
 function loadPageDescriptionSectionSelection() {
   try {
@@ -1269,7 +1338,7 @@ const shortcutGroups: ShortcutGroup[] = [
     title: '面板控制',
     items: [
       { key: 'N', label: '展开 / 收起导航', run: () => { if (mode.value === 'interactive') toggleInteractiveFlowNav() } },
-      { key: 'C', label: '展开 / 收起协作', run: () => { if (mode.value === 'interactive') annotationPanelCollapsed.value = !annotationPanelCollapsed.value } },
+      { key: 'C', label: '展开 / 收起注释', run: () => { if (mode.value === 'interactive') toggleAnnotationPanel() } },
       { key: 'D', label: '展开 / 收起数据源', run: () => { dataSourcePanelCollapsed.value = !dataSourcePanelCollapsed.value } },
       { key: 'K', label: '展开 / 收起快捷键', run: () => { shortcutPanelCollapsed.value = !shortcutPanelCollapsed.value } },
     ],
@@ -1283,17 +1352,14 @@ const shortcutGroups: ShortcutGroup[] = [
         run: () => {
           mode.value = 'interactive'
           annotationPanelCollapsed.value = false
-          activeCollaborationTab.value = 'annotations'
+          closePageDescriptionReader(false)
           startAnnotationPlacement()
         },
       },
       {
         key: 'E',
-        label: '页面描述总览',
-        run: () => {
-          pageDescriptionSummaryVisible.value = !pageDescriptionSummaryVisible.value
-          if (pageDescriptionSummaryVisible.value) pageDescriptionCopyNotice.value = ''
-        },
+        label: '展开 / 收起页面描述',
+        run: togglePageDescriptionReader,
       },
     ],
   },
@@ -1310,10 +1376,17 @@ function isEditableShortcutTarget(target: EventTarget | null) {
 function handleShortcutKeydown(event: KeyboardEvent) {
   if (!isAuthenticated.value || isMobilePureInteractive.value) return
   if (event.defaultPrevented || event.isComposing || event.keyCode === 229 || event.repeat) return
-  if (event.ctrlKey || event.altKey || event.metaKey || isEditableShortcutTarget(event.target)) return
+  if (event.ctrlKey || event.altKey || event.metaKey) return
 
-  const key = event.key === 'Escape' ? 'esc' : event.key.toLowerCase()
-  const shortcut = shortcutByKey.get(key)
+  if (event.key === 'Escape' && presentationMode.value && appRoute.value === 'prototype') {
+    event.preventDefault()
+    event.stopPropagation()
+    exitPresentationMode()
+    return
+  }
+  if (isEditableShortcutTarget(event.target)) return
+
+  const shortcut = shortcutByKey.get(event.key.toLowerCase())
   if (!shortcut) return
 
   event.preventDefault()
@@ -1721,6 +1794,7 @@ onBeforeUnmount(() => {
 
 <template>
   <main
+    @keydown.capture="handleShortcutKeydown"
     class="pc-workbench min-h-screen bg-canvas text-ink"
     :data-workbench-theme="selectedThemeId"
     :class="[
@@ -1966,26 +2040,17 @@ onBeforeUnmount(() => {
         </div>
         <div v-if="effectiveMode === 'interactive'" class="pc-stage-actions">
           <button v-if="currentScreenPlatform === 'mobile'" type="button" class="pc-tool-button" :aria-pressed="fitInteractivePhone" @click="fitInteractivePhone = !fitInteractivePhone">{{ fitInteractivePhone ? `适应视口 · ${Math.round(interactivePhoneScale * 100)}%` : '原尺寸 · 100%' }}</button>
-          <button type="button" class="pc-tool-button" @click="togglePresentationMode">演示模式</button>
-          <button class="pc-tool-button" type="button" aria-controls="workbench-page-collaboration" :aria-expanded="!annotationPanelCollapsed" @click="annotationPanelCollapsed = !annotationPanelCollapsed">
-            <MessageSquare class="h-4 w-4" aria-hidden="true" />协作（注释 / 描述） <kbd>C</kbd>
+          <button type="button" class="pc-tool-button" aria-keyshortcuts="P" @click="togglePresentationMode">演示模式 <kbd>P</kbd></button>
+          <button ref="pageDescriptionReaderToggle" class="pc-tool-button" type="button" aria-controls="workbench-page-description" :aria-expanded="pageDescriptionReaderOpen" @click="togglePageDescriptionReader">
+            <BookOpen class="h-4 w-4" aria-hidden="true" />页面描述 <kbd>E</kbd>
+          </button>
+          <button class="pc-tool-button" type="button" aria-controls="workbench-page-collaboration" :aria-expanded="!pageDescriptionReaderOpen && !annotationPanelCollapsed" @click="toggleAnnotationPanel">
+            <MessageSquare class="h-4 w-4" aria-hidden="true" />注释 <kbd>C</kbd>
           </button>
         </div>
       </section>
 
-      <section v-if="effectiveMode === 'interactive' && !isMobilePureInteractive && !presentationMode" class="pc-page-description" aria-labelledby="pc-page-description-title">
-        <div class="pc-page-description-head">
-          <h2 id="pc-page-description-title">页面描述</h2>
-          <button class="pc-tool-button" type="button" @click="pageDescriptionSummaryVisible = true; pageDescriptionCopyNotice = ''">查看全部</button>
-        </div>
-        <div v-if="currentPageDescription" class="pc-page-description-body">
-          <p><b>页面结构：</b>{{ pageDescriptionSummary.structure }}</p>
-          <p><b>核心功能：</b>{{ pageDescriptionSummary.features }}</p>
-        </div>
-        <p v-else class="pc-page-description-empty">{{ coreText('pageDescriptionEmpty') }}</p>
-      </section>
-
-      <div class="pc-stage-layout" :class="{ 'pc-nav-collapsed': interactiveFlowNavCollapsed, 'pc-inspector-collapsed': annotationPanelCollapsed }">
+      <div class="pc-stage-layout" :class="{ 'pc-nav-collapsed': interactiveFlowNavCollapsed, 'pc-inspector-collapsed': pageDescriptionReaderOpen ? !pageDescriptionReaderDocked && annotationPanelCollapsed : annotationPanelCollapsed }" :style="pageDescriptionReaderDocked ? { '--pc-inspect-w': pageDescriptionReaderWide ? '640px' : '480px' } : undefined">
         <aside
           v-if="effectiveMode === 'interactive' && !isMobilePureInteractive && !presentationMode"
           v-show="!interactiveFlowNavCollapsed"
@@ -2209,12 +2274,12 @@ onBeforeUnmount(() => {
             </div>
           </div>
         </section>
+    <div v-if="pageDescriptionReaderVisible" v-show="pageDescriptionReaderDocked" id="workbench-description-dock" class="pc-description-dock"></div>
     <aside
       v-if="effectiveMode === 'interactive' && !isMobilePureInteractive && !presentationMode"
-      v-show="!annotationPanelCollapsed"
+      v-show="!annotationPanelCollapsed && !pageDescriptionReaderDocked"
       id="workbench-page-collaboration"
       class="annotation-side-panel"
-      :class="{ 'description-view-mode': activeCollaborationTab === 'pageDescription' }"
     >
       <template v-if="!annotationPanelCollapsed">
         <div class="annotation-panel-head">
@@ -2222,26 +2287,9 @@ onBeforeUnmount(() => {
             <p>{{ coreText('annotationPanelTitle') }}</p>
             <span>{{ coreText('annotationPanelSubtitle') }} · {{ currentMeta.code }}<template v-if="currentPrototypeStateLabel"> · {{ currentPrototypeStateLabel }}</template></span>
           </div>
-          <strong>{{ activeCollaborationTab === 'annotations' ? currentScreenAnnotations.length : currentPageDescription ? 1 : 0 }}</strong>
+          <strong>{{ currentScreenAnnotations.length }}</strong>
         </div>
-        <div class="annotation-panel-tabs">
-          <button type="button" :class="{ active: activeCollaborationTab === 'annotations' }" :aria-pressed="activeCollaborationTab === 'annotations'" @click="activeCollaborationTab = 'annotations'">
-            {{ coreText('annotationTabNotes') }}
-          </button>
-          <button type="button" :class="{ active: activeCollaborationTab === 'pageDescription' }" :aria-pressed="activeCollaborationTab === 'pageDescription'" @click="activeCollaborationTab = 'pageDescription'; cancelAnnotationDraft()">
-            {{ coreText('annotationTabDescription') }}
-          </button>
-        </div>
-        <div v-if="activeCollaborationTab === 'pageDescription'" class="pc-description-context">
-          <span class="pc-eyebrow">数据来源</span>
-          <div class="page-description-source-switcher" aria-label="切换页面描述数据源">
-            <button v-for="option in pageDescriptionSourceOptions" :key="option.source" type="button" :class="{ active: pageDescriptionSelectedSource === option.source }" :aria-pressed="pageDescriptionSelectedSource === option.source" @click="selectPageDescriptionSource(option.source)">
-              <component :is="option.icon" aria-hidden="true" />{{ option.label }}
-            </button>
-          </div>
-          <button class="pc-tool-button" type="button" @click="pageDescriptionSummaryVisible = true; pageDescriptionCopyNotice = ''">查看描述摘要</button>
-        </div>
-        <div v-if="activeCollaborationTab === 'annotations'" class="annotation-panel-actions">
+        <div class="annotation-panel-actions">
           <button type="button" :class="{ active: isPlacingAnnotation }" @click="startAnnotationPlacement">
             {{ isPlacingAnnotation ? coreText('annotationCancelAdd') : coreText('annotationAdd') }}
           </button>
@@ -2252,15 +2300,6 @@ onBeforeUnmount(() => {
             {{ coreText('annotationRefresh') }}
           </button>
           <button type="button" @click="exportAnnotations">{{ coreText('annotationExport') }}</button>
-        </div>
-        <div v-else class="annotation-panel-actions description-actions">
-          <button type="button" :disabled="annotationSyncStatus === 'syncing'" @click="refreshPageDescriptions()">
-            {{ coreText('annotationRefresh') }}
-          </button>
-          <button type="button" @click="exportPageDescriptions">{{ coreText('pageDescriptionExport') }}</button>
-          <button type="button" :class="{ active: pageDescriptionEditing }" @click="startPageDescriptionEdit">
-            {{ currentPageDescription ? '编辑' : '新增' }}
-          </button>
         </div>
         <div class="annotation-sync-row" :class="`is-${annotationSyncStatus}`">
           <span>{{ annotationRemoteReady ? annotationSyncLabel : coreText('annotationRemoteDisabled') }}</span>
@@ -2280,7 +2319,7 @@ onBeforeUnmount(() => {
           </div>
         </label>
         <p v-if="annotationPollingNotice" class="annotation-polling-notice">{{ annotationPollingNotice }}</p>
-        <div v-if="activeCollaborationTab === 'annotations'" class="annotation-list">
+        <div class="annotation-list">
           <p v-if="!currentScreenAnnotations.length" class="annotation-empty">{{ coreText('annotationEmpty') }}</p>
           <section v-for="(annotation, index) in currentScreenAnnotations" :key="annotation.id" @mouseenter="handleAnnotationListMouseEnter(annotation)" @mouseleave="scheduleHideAnnotationPopover">
             <span>{{ index + 1 }}</span>
@@ -2305,16 +2344,6 @@ onBeforeUnmount(() => {
               </button>
             </div>
           </section>
-        </div>
-        <div v-else class="page-description-view">
-          <p v-if="!currentPageDescription" class="annotation-empty">{{ coreText('pageDescriptionEmpty') }}</p>
-          <template v-else>
-            <small v-if="currentPageDescriptionUpdatedLabel" class="page-description-meta">{{ currentPageDescriptionUpdatedLabel }}</small>
-            <section v-for="section in pageDescriptionSummarySections" :key="section.id">
-              <h3>{{ section.label }}</h3>
-              <p>{{ section.value }}</p>
-            </section>
-          </template>
         </div>
       </template>
     </aside>
@@ -2636,16 +2665,39 @@ onBeforeUnmount(() => {
         </div>
       </form>
     </div>
-    <div v-if="appRoute === 'prototype' && pageDescriptionSummaryVisible && !isMobilePureInteractive" class="page-description-summary-backdrop" @click.self="pageDescriptionSummaryVisible = false">
-      <section class="page-description-summary-dialog pc-dialog">
-        <div class="page-description-summary-head">
+    <template v-if="appRoute === 'prototype' && pageDescriptionReaderVisible">
+      <dialog id="workbench-description-modal" ref="pageDescriptionReaderDialog" class="pc-description-modal pc-dialog" aria-labelledby="workbench-description-title" @cancel.prevent="closePageDescriptionReader()" @click.self="closePageDescriptionReader()"></dialog>
+      <Teleport defer :to="pageDescriptionReaderDocked ? '#workbench-description-dock' : '#workbench-description-modal'">
+      <section id="workbench-page-description" class="pc-description-reader" aria-labelledby="workbench-description-title" @keydown.esc.stop.prevent="closePageDescriptionReader()">
+        <header class="pc-description-reader-head">
           <div>
-            <p>页面描述</p>
-            <span>{{ currentMeta.code }} · {{ currentMeta.title }}<template v-if="currentPrototypeStateLabel"> · {{ currentPrototypeStateLabel }}</template></span>
+            <h2 id="workbench-description-title">页面描述</h2>
+            <small>{{ currentMeta.code }} · {{ currentMeta.title }}<template v-if="currentPrototypeStateLabel"> · {{ currentPrototypeStateLabel }}</template></small>
           </div>
-          <button type="button" aria-label="关闭页面描述" @click="pageDescriptionSummaryVisible = false">×</button>
+          <div class="pc-description-reader-buttons">
+            <button v-if="pageDescriptionReaderDocked" type="button" class="pc-tool-button" :aria-pressed="pageDescriptionReaderWide" :disabled="!pageDescriptionCanWiden" :title="!pageDescriptionCanWiden ? '窗口空间不足，无法加宽' : undefined" @click="togglePageDescriptionWidth">{{ pageDescriptionReaderWide ? '恢复标准' : '加宽' }}</button>
+            <button type="button" class="pc-tool-button" aria-label="关闭页面描述" @click="closePageDescriptionReader()">关闭</button>
+          </div>
+        </header>
+        <div class="pc-description-reader-toolbar">
+          <small role="status">{{ pageDescriptionReaderStatus }}</small>
+          <details class="pc-description-reader-actions">
+            <summary class="pc-tool-button">操作</summary>
+            <div>
+              <label>数据来源
+                <select :value="pageDescriptionSelectedSource" @change="selectPageDescriptionSource(($event.target as HTMLSelectElement).value as DataSource)">
+                  <option v-for="option in pageDescriptionSourceOptions" :key="option.source" :value="option.source">{{ option.label }}</option>
+                </select>
+              </label>
+              <button class="pc-tool-button" type="button" :disabled="collaborationSources.pageDescriptions.status === 'syncing'" @click="refreshPageDescriptions()">刷新</button>
+              <button class="pc-tool-button" type="button" @click="exportPageDescriptions">{{ coreText('pageDescriptionExport') }}</button>
+              <button class="pc-tool-button" type="button" @click="startPageDescriptionEdit">{{ currentPageDescription ? '编辑' : '新增' }}</button>
+              <button v-if="currentPageDescription" class="pc-tool-button" type="button" :aria-pressed="pageDescriptionFilter" @click="pageDescriptionFilter = !pageDescriptionFilter; pageDescriptionCopyNotice = ''">{{ pageDescriptionFilter ? '显示全文' : '筛选与复制' }}</button>
+            </div>
+          </details>
         </div>
-        <div class="page-description-summary-options" aria-label="选择展示的页面描述部分">
+        <div ref="pageDescriptionReaderBody" class="pc-description-reader-body" tabindex="0" aria-label="页面描述正文">
+        <div v-if="pageDescriptionFilter && currentPageDescription" class="page-description-summary-options" aria-label="选择展示的页面描述部分">
           <div class="page-description-summary-options-head">
             <p>展示内容</p>
           </div>
@@ -2664,16 +2716,23 @@ onBeforeUnmount(() => {
             </label>
           </div>
         </div>
-        <div class="page-description-summary-body">
-          <p v-if="!selectedPageDescriptionSections.length" class="page-description-summary-empty">请选择要展示的描述部分。</p>
-          <p v-for="section in selectedPageDescriptionSections" v-else :key="section.id"><b>{{ section.label }}：</b>{{ section.value }}</p>
+        <p v-if="!currentPageDescription" class="annotation-empty">{{ coreText('pageDescriptionEmpty') }}</p>
+        <p v-else-if="!pageDescriptionReaderSections.length" class="page-description-summary-empty">请选择要展示的描述部分。</p>
+        <template v-else>
+          <section v-for="section in pageDescriptionReaderSections" :key="section.id">
+            <h3>{{ section.label }}</h3>
+            <p>{{ section.value }}</p>
+          </section>
+          <small v-if="currentPageDescriptionUpdatedLabel">{{ currentPageDescriptionUpdatedLabel }}</small>
+        </template>
         </div>
-        <div class="page-description-summary-actions">
+        <div v-if="pageDescriptionFilter && currentPageDescription" class="page-description-summary-actions">
           <small>{{ pageDescriptionCopyNotice }}</small>
           <button type="button" :disabled="!selectedPageDescriptionSections.length" @click="copyPageDescriptionSummary">复制选中内容</button>
         </div>
       </section>
-    </div>
+      </Teleport>
+    </template>
     <div v-if="appRoute === 'prototype' && showPrototypeHealthPanel && !isMobilePureInteractive" class="prototype-health-backdrop" @click.self="showPrototypeHealthPanel = false">
       <section class="prototype-health-panel" role="dialog" aria-modal="true" aria-label="原型健康检查">
         <div class="prototype-health-head">
